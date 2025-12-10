@@ -7,9 +7,9 @@ const SALEOR_URL = process.env.SALEOR_API_URL!;
 const rawToken = process.env.SALEOR_TOKEN!;
 const authHeader = rawToken.startsWith('Bearer ') ? rawToken : `Bearer ${rawToken}`;
 
-const SALEOR_HEADERS = { 
-    'Content-Type': 'application/json', 
-    'Authorization': authHeader 
+const SALEOR_HEADERS = {
+    'Content-Type': 'application/json',
+    'Authorization': authHeader
 };
 const SHOPIFY_HEADERS = {
     'Content-Type': 'application/json',
@@ -17,14 +17,14 @@ const SHOPIFY_HEADERS = {
 };
 
 // IDs from .env
-const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!; 
+const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!;
 const BRAND_ATTRIBUTE_ID = process.env.SALEOR_BRAND_ATTRIBUTE_ID!;
 const PRODUCT_TYPE_ID = process.env.SALEOR_PRODUCT_TYPE_ID!;
 const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID!;
-const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID!; 
+const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID!;
 
 // Global State
-let WAREHOUSE_MUTATION_NAME = "warehouseCreate"; 
+let WAREHOUSE_MUTATION_NAME = "warehouseCreate";
 let IS_WAREHOUSE_CAPABLE = false;
 const EXISTING_PRODUCTS = new Map<string, string>(); // Cache: Normalized Name -> ID
 
@@ -36,7 +36,7 @@ const DEFAULT_VENDOR_ADDRESS = {
     streetAddress1: "123 Market St",
     city: "San Francisco",
     postalCode: "94105",
-    country: "US", 
+    country: "US",
     countryArea: "CA"
 };
 
@@ -77,10 +77,10 @@ async function runDiagnostics() {
     console.log("🔍 Running Pre-flight Diagnostics...");
     const schemaQuery = `query { __type(name: "Mutation") { fields { name } } }`;
     const schemaJson = await saleorFetch(schemaQuery);
-    
+
     if (schemaJson.errors) {
-         console.error("   ❌ Introspection Failed:", JSON.stringify(schemaJson.errors));
-         return false;
+        console.error("   ❌ Introspection Failed:", JSON.stringify(schemaJson.errors));
+        return false;
     }
 
     const mutations = schemaJson.data?.__type?.fields?.map((f: any) => f.name) || [];
@@ -92,7 +92,7 @@ async function runDiagnostics() {
         WAREHOUSE_MUTATION_NAME = "warehouseCreate";
         IS_WAREHOUSE_CAPABLE = true;
     } else if (hasLegacyWarehouse) {
-        WAREHOUSE_MUTATION_NAME = "createWarehouse"; 
+        WAREHOUSE_MUTATION_NAME = "createWarehouse";
         IS_WAREHOUSE_CAPABLE = true;
     } else {
         IS_WAREHOUSE_CAPABLE = false;
@@ -106,14 +106,53 @@ async function runDiagnostics() {
         console.warn("\n   ⚠️  WARNING: Warehouse creation capabilities missing.");
         console.warn("      Check 'MANAGE_PRODUCTS' and 'MANAGE_SHIPPING' permissions.");
     }
-    return true; 
+
+    // New Configuration Check
+    if (PRODUCT_TYPE_ID && BRAND_ATTRIBUTE_ID) {
+        await checkProductTypeConfig(PRODUCT_TYPE_ID, BRAND_ATTRIBUTE_ID);
+    }
+
+    return true;
+}
+
+async function checkProductTypeConfig(productTypeId: string, attributeId: string) {
+    console.log(`   🔍 Verifying Product Type Configuration...`);
+    const query = `
+    query ProductTypeDetails($id: ID!) {
+        productType(id: $id) {
+            name
+            productAttributes { id name slug inputType }
+            variantAttributes { id name slug inputType }
+        }
+    }`;
+
+    const json = await saleorFetch(query, { id: productTypeId });
+    const pt = json.data?.productType;
+
+    if (!pt) {
+        console.error(`   ❌ CRITICAL: Product Type ${productTypeId} NOT FOUND.`);
+        return;
+    }
+
+    const allAttrs = [...(pt.productAttributes || []), ...(pt.variantAttributes || [])];
+    const found = allAttrs.find((a: any) => a.id === attributeId);
+
+    if (found) {
+        console.log(`      ✅ Product Type "${pt.name}" is configured with Attribute "${found.name}" (${found.slug}).`);
+        console.log(`      ℹ️  Attribute ID: ${found.id}`);
+        console.log(`      ℹ️  Input Type:   ${found.inputType}`);
+    } else {
+        console.error(`      ❌ CRITICAL CONFIG ERROR: Product Type "${pt.name}" DOES NOT HAVE Attribute ${attributeId} assigned.`);
+        console.error(`          -> Go to Saleor Dashboard > Configuration > Product Types > ${pt.name}`);
+        console.error(`          -> Assing Attribute ID: ${attributeId}`);
+    }
 }
 
 async function loadExistingProducts() {
     console.log("📥 Caching existing Saleor products (this avoids duplicates)...");
     let hasNextPage = true;
     let cursor = null;
-    
+
     while (hasNextPage) {
         const query = `query GetAllProds($after: String) { 
             products(first: 100, after: $after) { 
@@ -122,7 +161,7 @@ async function loadExistingProducts() {
             } 
         }`;
         const json = await saleorFetch(query, { after: cursor });
-        
+
         const edges = json.data?.products?.edges || [];
         for (const edge of edges) {
             // Normalize name for robust comparison
@@ -176,7 +215,7 @@ async function getOrCreateShippingZone(zoneName: string): Promise<string | null>
     const query = `query FindZone($search: String!) { shippingZones(filter: { search: $search }, first: 1) { edges { node { id name } } } }`;
     const json = await saleorFetch(query, { search: zoneName });
     const existing = json.data?.shippingZones?.edges?.[0]?.node;
-    
+
     if (existing) return existing.id;
 
     // 2. Create if missing
@@ -191,9 +230,9 @@ async function getOrCreateShippingZone(zoneName: string): Promise<string | null>
 
     // Default basic countries for Europe zone
     const countries = ["DE", "FR", "GB", "IT", "ES", "PL", "NL", "BE", "AT", "PT", "SE", "DK", "FI", "NO", "IE"];
-    
-    const createJson = await saleorFetch(createQuery, { 
-        input: { name: zoneName, countries: countries } 
+
+    const createJson = await saleorFetch(createQuery, {
+        input: { name: zoneName, countries: countries }
     });
 
     const newZoneId = createJson.data?.shippingZoneCreate?.shippingZone?.id;
@@ -201,7 +240,7 @@ async function getOrCreateShippingZone(zoneName: string): Promise<string | null>
         console.error("   ❌ Failed to create shipping zone:", JSON.stringify(createJson.data?.shippingZoneCreate?.errors));
         return null;
     }
-    
+
     return newZoneId;
 }
 
@@ -211,9 +250,9 @@ async function assignWarehouseToChannels(warehouseId: string, channels: any[]) {
         mutation ChannelUpdate($id: ID!, $input: ChannelUpdateInput!) {
             channelUpdate(id: $id, input: $input) { errors { field message } }
         }`;
-        await saleorFetch(mutation, { 
-            id: channel.id, 
-            input: { addWarehouses: [warehouseId] } 
+        await saleorFetch(mutation, {
+            id: channel.id,
+            input: { addWarehouses: [warehouseId] }
         });
     }
     console.log("   🔗 Warehouse linked to Channels.");
@@ -227,7 +266,7 @@ async function assignShippingZoneToWarehouse(warehouseId: string, zoneId: string
     const wQuery = `query GetWarehouseZones($id: ID!) { warehouse(id: $id) { shippingZones(first: 50) { edges { node { id } } } } }`;
     const wJson = await saleorFetch(wQuery, { id: warehouseId });
     const currentZones = wJson.data?.warehouse?.shippingZones?.edges?.map((e: any) => e.node.id) || [];
-    
+
     if (currentZones.includes(zoneId)) {
         console.log("      ✅ Already linked.");
         return;
@@ -241,9 +280,9 @@ async function assignShippingZoneToWarehouse(warehouseId: string, zoneId: string
         }
     }`;
 
-    const res = await saleorFetch(mutation, { 
-        id: zoneId, 
-        input: { addWarehouses: [warehouseId] } 
+    const res = await saleorFetch(mutation, {
+        id: zoneId,
+        input: { addWarehouses: [warehouseId] }
     });
 
     // Handle Top-Level GraphQL Errors
@@ -262,12 +301,12 @@ async function assignShippingZoneToWarehouse(warehouseId: string, zoneId: string
 
 async function getOrCreateWarehouse(vendorName: string, channels: any[]): Promise<string | null> {
     const slugName = `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    
+
     // A. FIND
     const query = `query FindWarehouse($search: String!) { warehouses(filter: { search: $search }, first: 1) { edges { node { id name slug } } } }`;
     const json = await saleorFetch(query, { search: vendorName });
     const existing = json.data?.warehouses?.edges?.[0]?.node;
-    
+
     if (existing) return existing.id;
 
     // B. CREATE
@@ -281,16 +320,16 @@ async function getOrCreateWarehouse(vendorName: string, channels: any[]): Promis
             errors { field message code }
         }
     }`;
-    
+
     const vars = {
         input: {
             name: `${vendorName} Warehouse`,
             slug: slugName,
             address: DEFAULT_VENDOR_ADDRESS,
-            email: "vendor@example.com" 
+            email: "vendor@example.com"
         }
     };
-    
+
     const createJson = await saleorFetch(createQuery, vars);
     const result = createJson.data?.[WAREHOUSE_MUTATION_NAME];
 
@@ -298,29 +337,29 @@ async function getOrCreateWarehouse(vendorName: string, channels: any[]): Promis
         if (result.errors.some((e: any) => e.field === 'slug')) {
             console.log(`   🔄 Slug taken. Fetching existing...`);
             const slugSearch = await saleorFetch(query, { search: slugName });
-            const found = slugSearch.data?.warehouses?.edges?.find((e:any) => e.node.slug === slugName)?.node;
-            if(found) return found.id;
+            const found = slugSearch.data?.warehouses?.edges?.find((e: any) => e.node.slug === slugName)?.node;
+            if (found) return found.id;
         }
         console.error("   ⚠️ Warehouse Creation Failed:", JSON.stringify(result.errors));
         return null;
     }
-    
+
     const newWarehouseId = result?.warehouse?.id;
 
     // C. ASSIGN
     if (newWarehouseId) {
         await assignWarehouseToChannels(newWarehouseId, channels);
-        
+
         // Ensure "Europe" zone exists and assign it
-        const europeZoneId = await getOrCreateShippingZone("Europe"); 
-        
+        const europeZoneId = await getOrCreateShippingZone("Europe");
+
         if (europeZoneId) {
             await assignShippingZoneToWarehouse(newWarehouseId, europeZoneId);
         } else {
             console.error("   ❌ Could not resolve 'Europe' shipping zone.");
         }
     }
-    
+
     return newWarehouseId;
 }
 
@@ -358,20 +397,12 @@ async function fetchShopifyProducts() {
 async function createInSaleor(shopifyNode: any, channels: any[]) {
     const p = shopifyNode.node;
     const normalizedTitle = p.title.trim().toLowerCase();
-    
+
     console.log(`\n📦 Processing: "${p.title}"`);
 
-    // 1. CHECK CACHE (INSTANT & ROBUST)
-    const existingId = EXISTING_PRODUCTS.get(normalizedTitle);
-    
-    if (existingId) {
-        console.log(`   🚫 Product "${p.title}" already exists (ID: ${existingId}). Skipping.`);
-        return; // EXIT EARLY
-    }
-
-    // 2. VENDOR SETUP
+    // 1. VENDOR SETUP
     const brandPageId = await getOrCreateBrandPage(p.vendor);
-    let targetWarehouseId = await getOrCreateWarehouse(p.vendor, channels); 
+    let targetWarehouseId = await getOrCreateWarehouse(p.vendor, channels);
 
     if (!targetWarehouseId) {
         console.warn(`   ⚠️  Using Default Warehouse.`);
@@ -383,14 +414,25 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
     if (brandPageId) {
         attributesInput.push({
             id: BRAND_ATTRIBUTE_ID,
-            references: [brandPageId]
+            reference: brandPageId // Fixed: Use singular 'reference' for SINGLE_REFERENCE input
         });
+    }
+
+    console.log(`      📝 Intended Attributes for "${p.title}":`, JSON.stringify(attributesInput));
+
+    // 2. CHECK CACHE (INSTANT & ROBUST)
+    const existingId = EXISTING_PRODUCTS.get(normalizedTitle);
+
+    if (existingId) {
+        console.log(`   🚫 Product "${p.title}" already exists (ID: ${existingId}). Skipping.`);
+        // Ensure we verify attribute logic even if skipping
+        return; // EXIT EARLY
     }
 
     // 3. CREATE PRODUCT
     console.log(`   ✨ Creating NEW Product: "${p.title}"`);
     const descriptionJson = textToEditorJs(p.descriptionHtml || p.title);
-    
+
     const createProductQuery = `
     mutation CreateProduct($input: ProductCreateInput!) {
         productCreate(input: $input) {
@@ -403,8 +445,8 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
             name: p.title,
             productType: PRODUCT_TYPE_ID,
             category: CATEGORY_ID,
-            description: descriptionJson,
-            attributes: attributesInput
+            description: descriptionJson
+            // attributes: attributesInput  <-- REMOVED
         }
     };
 
@@ -416,7 +458,34 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
 
     const finalProductId = prodJson.data?.productCreate?.product?.id;
     console.log(`   ✅ Created Product ID: ${finalProductId}`);
-    
+
+    // 3.1 ATTRIBUTE UPDATE (Separate Step)
+    if (attributesInput.length > 0 && finalProductId) {
+        console.log(`      🔗 Assigning Brand Attribute via Update...`);
+        const updateQuery = `
+        mutation UpdateProductAttrs($id: ID!, $input: ProductInput!) {
+            productUpdate(id: $id, input: $input) {
+                errors { field message }
+                product {
+                    attributes { attribute { id } values { id name } }
+                }
+            }
+        }`;
+
+        const updateRes = await saleorFetch(updateQuery, {
+            id: finalProductId,
+            input: { attributes: attributesInput }
+        });
+
+        if (updateRes.data?.productUpdate?.errors?.length > 0) {
+            console.error(`      ❌ Attribute Assignment Failed:`, JSON.stringify(updateRes.data.productUpdate.errors, null, 2));
+        } else if (updateRes.errors) {
+            console.error(`      ❌ GraphQL Error during Attribute Update:`, JSON.stringify(updateRes.errors, null, 2));
+        } else {
+            console.log(`      ✅ Brand Attribute Assigned Successfully!`);
+        }
+    }
+
     // UPDATE CACHE (Important for preventing dupes if Shopify list has dupes)
     EXISTING_PRODUCTS.set(normalizedTitle, finalProductId);
 
@@ -430,7 +499,8 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
         publicationDate: dateStr,
         isAvailableForPurchase: true,
         visibleInListings: true,
-        availableForPurchaseAt: new Date().toISOString()
+        // Change this line in your channelListings map:
+        availableForPurchaseAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // Set to 24 hours ago
     }));
     const updateChannelQuery = `mutation UpdateChannel($id: ID!, $input: ProductChannelListingUpdateInput!) { productChannelListingUpdate(id: $id, input: $input) { errors { field } } }`;
     await saleorFetch(updateChannelQuery, { id: finalProductId, input: { updateChannels: channelListings } });
@@ -445,15 +515,15 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
     // 6. VARIANTS
     for (const vEdge of p.variants.edges) {
         const v = vEdge.node;
-        if(v.inventoryQuantity > 0) {
-            await createVariant(finalProductId, v, channels, targetWarehouseId!); 
+        if (v.inventoryQuantity > 0) {
+            await createVariant(finalProductId, v, channels, targetWarehouseId!);
         }
     }
 }
 
 async function createVariant(prodId: string, v: any, channels: any[], warehouseId: string) {
     const sku = v.sku || `IMP-${Math.floor(Math.random() * 999999)}`;
-    const shopifyPrice = parseFloat(v.price); 
+    const shopifyPrice = parseFloat(v.price);
 
     const createVarQuery = `
     mutation CreateVar($input: ProductVariantCreateInput!) {
@@ -462,14 +532,14 @@ async function createVariant(prodId: string, v: any, channels: any[], warehouseI
             errors { field message }
         }
     }`;
-    
+
     const varVars = {
         input: {
             product: prodId,
             sku: sku,
-            attributes: [], 
+            attributes: [],
             trackInventory: true,
-            stocks: [{ warehouse: warehouseId, quantity: v.inventoryQuantity }] 
+            stocks: [{ warehouse: warehouseId, quantity: v.inventoryQuantity }]
         }
     };
 
@@ -488,7 +558,7 @@ async function createVariant(prodId: string, v: any, channels: any[], warehouseI
     }));
     const updatePriceQuery = `mutation UpdatePrice($id: ID!, $input: [ProductVariantChannelListingAddInput!]!) { productVariantChannelListingUpdate(id: $id, input: $input) { errors { field } } }`;
     await saleorFetch(updatePriceQuery, { id: variantId, input: priceListings });
-    
+
     console.log(`      ✅ Variant ${sku} created | Stock: ${v.inventoryQuantity}`);
 }
 
@@ -498,10 +568,10 @@ async function createVariant(prodId: string, v: any, channels: any[], warehouseI
         console.log("------------------------------------------------");
         console.log("🛠️  STARTING IMPORT (ROBUST MODE)");
         console.log("------------------------------------------------");
-        
+
         await runDiagnostics();
         await loadExistingProducts(); // <--- PRE-LOAD STEP
-        
+
         const channels = await getSaleorChannels();
         if (channels.length === 0) return console.error("❌ No Channels found.");
 
