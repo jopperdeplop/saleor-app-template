@@ -1,0 +1,17 @@
+🔄 Processing Order Identifier: 79
+   ℹ️  Looking up ID for Order #79...
+   ✅ Found ID: T3JkZXI6MWE3YWQ1YjktMmYwYi00NmZhLThiNDctNmMyZDZhZGM3MmNk (Order #79)
+   Found 1 unique vendors.
+   🏭 Processing Vendor: SaleorDevelopmentStore
+      📦 Address From: {"name":"Vendor Warehouse","company":"Vendor Warehouse","street1":"215 Clayton st","street2":"","city":"SAN FRANSISCO","state":"CA","zip":"94117","country":"US","phone":"+31636506306","email":"logistics@example.com"}
+      🌍 International Shipment detected. Generating Customs Declaration...
+      🚚 Creating Fulfillment for SaleorDevelopmentStore...
+      ✅ Fulfillment Created! Tracking: LS001396870US
+   💾 Saving Labels to Order Metadata...
+   ✅ Order Metadata Updated.
+🔄 [Trigger] Processing Order Identifier: T3JkZXI6ZGFhN2ZiM2ItNWJmMS00YzczLTkyNjktYjFjMjJmNGEwNWM5
+🔄 [Trigger] Processing Order Identifier: T3JkZXI6ZGFhN2ZiM2ItNWJmMS00YzczLTkyNjktYjFjMjJmNGEwNWM5
+   🏭 Processing Vendor: SaleorDevelopmentStore
+   🏭 Processing Vendor: SaleorDevelopmentStore
+   ✅ Trigger Job Complete: Metadata Updated.
+   ✅ Trigger Job Complete: Metadata Updated.
