@@ -23,6 +23,19 @@ export const saleorClient = createClient({
   }),
 });
 
+export function makeSaleorClient(url: string, token: string) {
+  return createClient({
+    url: url,
+    fetch: fetch as any,
+    exchanges: [cacheExchange, fetchExchange],
+    fetchOptions: () => ({
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+  });
+}
+
 // --- COMMON QUERIES ---
 
 export const ORDER_QUERY = `

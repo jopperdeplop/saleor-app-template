@@ -1,7 +1,8 @@
 import { task } from "@trigger.dev/sdk/v3";
-import { saleorClient, ORDER_QUERY, WAREHOUSE_QUERY, FULFILLMENT_CREATE, UPDATE_ORDER_METADATA, SEARCH_QUERY } from "../lib/saleor-client";
+import { makeSaleorClient, ORDER_QUERY, WAREHOUSE_QUERY, FULFILLMENT_CREATE, UPDATE_ORDER_METADATA, SEARCH_QUERY } from "../lib/saleor-client";
 import { createLabelForOrder } from "../lib/shippo";
 import { logDebug, OrderLine } from "../lib/utils";
+import { apl } from "../saleor-app";
 
 export const generateShippingLabel = task({
     id: "generate-shipping-label",
@@ -9,13 +10,26 @@ export const generateShippingLabel = task({
         const orderIdentifier = payload.orderId;
         logDebug(`🔄 [Trigger] Processing Order Identifier: ${orderIdentifier}`);
 
+        // --- AUTHENTICATION ---
+        const apiUrl = process.env.SALEOR_API_URL;
+        if (!apiUrl) throw new Error("SALEOR_API_URL env var is missing in Trigger.dev");
+
+        // Use the App's token from Upstash (Redis)
+        const authData = await apl.get(apiUrl);
+        if (!authData || !authData.token) {
+            throw new Error(`Could not find Auth Token for ${apiUrl}. Ensure the App is installed and KV env vars are set.`);
+        }
+        logDebug(`🔐 Authenticated as App for ${apiUrl}`);
+
+        const client = makeSaleorClient(apiUrl, authData.token);
+
         // --- LOGIC PORTED FROM order-automation.ts ---
 
         let orderId = orderIdentifier;
         // Resolve "79" -> "T3JkZXI..."
         if (!orderId.startsWith("T") && !orderId.includes("=")) {
             logDebug(`   ℹ️  Looking up ID for Order #${orderId}...`);
-            const { data, error } = await saleorClient.query(SEARCH_QUERY, { number: orderId }).toPromise();
+            const { data, error } = await client.query(SEARCH_QUERY, { number: orderId }).toPromise();
             if (error) logDebug("   ❌ Search Error:", error);
 
             const found = data?.orders?.edges?.[0]?.node;
@@ -28,7 +42,7 @@ export const generateShippingLabel = task({
         }
 
         // 1. Fetch Order
-        const { data: orderData, error: orderError } = await saleorClient.query(ORDER_QUERY, { id: orderId }).toPromise();
+        const { data: orderData, error: orderError } = await client.query(ORDER_QUERY, { id: orderId }).toPromise();
         if (orderError) {
             logDebug(`   ❌ Failed to fetch order:`, orderError);
             throw new Error(`Failed to fetch order: ${orderError.message}`);
@@ -59,7 +73,7 @@ export const generateShippingLabel = task({
             logDebug(`   🏭 Processing Vendor: ${vendor}`);
 
             // A. Find Warehouse
-            const warehouseNode = await getVendorWarehouse(vendor);
+            const warehouseNode = await getVendorWarehouse(client, vendor);
             const warehouseAddress = warehouseNode?.address ? mapSaleorAddressToShippo(warehouseNode.address) : null;
 
             // Default US Warehouse for testing if not found (per previous instructions)
@@ -135,7 +149,7 @@ export const generateShippingLabel = task({
                     trackingNumber: labelData.trackingNumber,
                     notifyCustomer: true
                 };
-                await saleorClient.mutation(FULFILLMENT_CREATE, { input: fulfillInput }).toPromise();
+                await client.mutation(FULFILLMENT_CREATE, { input: fulfillInput }).toPromise();
 
                 generatedLabels.push({
                     vendor,
@@ -154,7 +168,7 @@ export const generateShippingLabel = task({
             }));
             metaInput.push({ key: "shippo_label_url", value: generatedLabels[0].labelUrl });
 
-            await saleorClient.mutation(UPDATE_ORDER_METADATA, { id: order.id, input: metaInput }).toPromise();
+            await client.mutation(UPDATE_ORDER_METADATA, { id: order.id, input: metaInput }).toPromise();
             logDebug("   ✅ Trigger Job Complete: Metadata Updated.");
         }
 
@@ -172,12 +186,12 @@ function getVendorFromLine(line: OrderLine): string {
     return brandAttr?.values[0]?.name || "Unknown";
 }
 
-async function getVendorWarehouse(vendorName: string) {
+async function getVendorWarehouse(client: any, vendorName: string) {
     if (vendorName === "Unknown") return null;
-    let res = await saleorClient.query(WAREHOUSE_QUERY, { search: `${vendorName} Warehouse` }).toPromise();
+    let res = await client.query(WAREHOUSE_QUERY, { search: `${vendorName} Warehouse` }).toPromise();
     let node = res.data?.warehouses?.edges?.[0]?.node;
     if (!node) {
-        res = await saleorClient.query(WAREHOUSE_QUERY, { search: vendorName }).toPromise();
+        res = await client.query(WAREHOUSE_QUERY, { search: vendorName }).toPromise();
         node = res.data?.warehouses?.edges?.[0]?.node;
     }
     return node;
