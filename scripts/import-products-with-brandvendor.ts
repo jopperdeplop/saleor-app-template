@@ -56,7 +56,7 @@ function textToEditorJs(text: string) {
     });
 }
 
-async function saleorFetch(query: string, variables: any = {}) {
+async function saleorFetch(query: string, variables: any = {}): Promise<any> {
     try {
         const res = await fetch(SALEOR_URL, {
             method: 'POST',

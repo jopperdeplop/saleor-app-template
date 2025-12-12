@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
-import fetch from 'node-fetch'; 
+import fetch from 'node-fetch';
 
 export const config = {
   api: { bodyParser: false },
@@ -31,9 +31,9 @@ async function getShopifyVariantDetails(inventoryItemId: number) {
       }
     }
   `;
-  
+
   const gid = `gid://shopify/InventoryItem/${inventoryItemId}`;
-  
+
   const res = await fetch(process.env.SHOPIFY_GRAPHQL_URL!, {
     method: 'POST',
     headers: {
@@ -43,9 +43,9 @@ async function getShopifyVariantDetails(inventoryItemId: number) {
     body: JSON.stringify({ query, variables: { id: gid } })
   });
 
-  const json = await res.json();
+  const json: any = await res.json();
   const variant = json.data?.inventoryItem?.variant;
-  
+
   return {
     id: variant?.id, // Returns "gid://shopify/ProductVariant/12345678"
     sku: variant?.sku,
@@ -56,7 +56,7 @@ async function getShopifyVariantDetails(inventoryItemId: number) {
 // Update Stock in Saleor
 async function updateSaleorStock(sku: string, quantity: number) {
   const warehouseId = process.env.SALEOR_WAREHOUSE_ID;
-  
+
   console.log(`   🔄 Syncing Saleor: SKU "${sku}" -> Qty ${quantity}`);
 
   const query = `
@@ -81,20 +81,20 @@ async function updateSaleorStock(sku: string, quantity: number) {
       'Content-Type': 'application/json',
       'Authorization': process.env.SALEOR_TOKEN!
     },
-    body: JSON.stringify({ 
-      query, 
-      variables: { sku, qty: quantity, warehouse: warehouseId } 
+    body: JSON.stringify({
+      query,
+      variables: { sku, qty: quantity, warehouse: warehouseId }
     })
   });
 
-  const json = await res.json();
-  
+  const json: any = await res.json();
+
   if (json.data?.productVariantStocksUpdate?.errors?.length > 0) {
     // Often fails if SKU doesn't exist yet (race condition). We log warning, not error.
     console.warn("   ⚠️ Saleor Update Failed (Product might not exist yet):", JSON.stringify(json.data.productVariantStocksUpdate.errors));
     return false;
   }
-  
+
   console.log("   ✅ Saleor Stock Updated Successfully.");
   return true;
 }
@@ -114,11 +114,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
 
     if (secret) {
-        const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
-        if (hash !== hmacHeader) {
-            console.error("   ⛔ Security Alert: Invalid Signature.");
-            return res.status(401).send('Forbidden');
-        }
+      const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+      if (hash !== hmacHeader) {
+        console.error("   ⛔ Security Alert: Invalid Signature.");
+        return res.status(401).send('Forbidden');
+      }
     }
 
     const payload = JSON.parse(rawBody.toString());
@@ -134,21 +134,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Logic Match: If no SKU in Shopify, construct the "IMP-{ID}" SKU 
     // This matches the logic in 'shopify-product-lifecycle.ts'
     if (!targetSku && details.id) {
-        const legacyId = details.id.split('/').pop(); // Extract "12345" from "gid://.../12345"
-        targetSku = `IMP-${legacyId}`;
-        console.log(`   ℹ️  No SKU in Shopify. Using generated SKU: "${targetSku}"`);
+      const legacyId = details.id.split('/').pop(); // Extract "12345" from "gid://.../12345"
+      targetSku = `IMP-${legacyId}`;
+      console.log(`   ℹ️  No SKU in Shopify. Using generated SKU: "${targetSku}"`);
     }
 
     if (!targetSku) {
-        console.log("   ❌ Skipped: Could not determine a SKU.");
-        return res.status(200).send('Skipped');
+      console.log("   ❌ Skipped: Could not determine a SKU.");
+      return res.status(200).send('Skipped');
     }
-    
+
     // 2. Apply Business Logic (Safety Buffer)
     let finalStock = shopifyStock;
     if (shopifyStock < 3) {
-        console.log("   🛡️  SAFETY BUFFER: Stock < 3. Force 0.");
-        finalStock = 0;
+      console.log("   🛡️  SAFETY BUFFER: Stock < 3. Force 0.");
+      finalStock = 0;
     }
 
     // 3. Execute Sync

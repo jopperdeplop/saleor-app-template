@@ -4,9 +4,9 @@ dotenv.config();
 
 // --- CONFIGURATION ---
 const SALEOR_URL = process.env.SALEOR_API_URL!;
-const SALEOR_HEADERS = { 
-    'Content-Type': 'application/json', 
-    'Authorization': process.env.SALEOR_TOKEN! 
+const SALEOR_HEADERS = {
+    'Content-Type': 'application/json',
+    'Authorization': process.env.SALEOR_TOKEN!
 };
 const SHOPIFY_HEADERS = {
     'Content-Type': 'application/json',
@@ -15,7 +15,7 @@ const SHOPIFY_HEADERS = {
 
 // IDs from .env
 // MAKE SURE SALEOR_BRAND_ATTRIBUTE_ID IS THE NEW "FIXED" ID
-const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!; 
+const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!;
 const BRAND_ATTRIBUTE_ID = process.env.SALEOR_BRAND_ATTRIBUTE_ID!;
 const PRODUCT_TYPE_ID = process.env.SALEOR_PRODUCT_TYPE_ID!;
 const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID!;
@@ -38,13 +38,13 @@ function textToEditorJs(text: string) {
     });
 }
 
-async function saleorFetch(query: string, variables: any = {}) {
+async function saleorFetch(query: string, variables: any = {}): Promise<any> {
     const res = await fetch(SALEOR_URL, {
         method: 'POST',
         headers: SALEOR_HEADERS,
         body: JSON.stringify({ query, variables })
     });
-    const json = await res.json();
+    const json: any = await res.json();
     return json;
 }
 
@@ -103,7 +103,7 @@ async function getOrCreateBrand(brandName: string): Promise<string | null> {
         }
     }`;
     const createJson = await saleorFetch(createQuery, { name: brandName, type: BRAND_MODEL_TYPE_ID });
-    
+
     if (createJson.data?.pageCreate?.errors?.length > 0) {
         console.error("   ❌ Error creating brand:", JSON.stringify(createJson.data.pageCreate.errors));
         return null;
@@ -131,8 +131,8 @@ async function fetchShopifyProducts() {
     }`;
     try {
         const res = await fetch(process.env.SHOPIFY_GRAPHQL_URL!, {
-            method: 'POST', 
-            headers: SHOPIFY_HEADERS, 
+            method: 'POST',
+            headers: SHOPIFY_HEADERS,
             body: JSON.stringify({ query })
         });
         const data: any = await res.json();
@@ -155,12 +155,12 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
     // 1. Prepare Brand
     const brandId = await getOrCreateBrand(p.vendor);
     const attributesInput = [];
-    
+
     if (brandId) {
         attributesInput.push({
             id: BRAND_ATTRIBUTE_ID,
             // CRITICAL FIX: Use 'references' (plural) and an array for Reference Attributes
-            references: [brandId] 
+            references: [brandId]
         });
     } else {
         console.warn("   ⚠️  No Brand ID found/created. Skipping brand assignment.");
@@ -168,7 +168,7 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
 
     // 2. Check Exists
     const existingId = await checkProductExists(p.title);
-    
+
     if (existingId) {
         console.log(`   ⚠️  Product exists (ID: ${existingId}). Updating Brand info...`);
         if (attributesInput.length > 0) {
@@ -180,7 +180,7 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
                 }
             }`;
             const res = await saleorFetch(updateQuery, { id: existingId, input: { attributes: attributesInput } });
-            
+
             if (res.data?.productUpdate?.errors?.length > 0) {
                 console.error("   ❌ Update failed:", JSON.stringify(res.data.productUpdate.errors));
             } else {
@@ -243,13 +243,13 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
     // 6. Variants
     for (const vEdge of p.variants.edges) {
         const v = vEdge.node;
-        if(v.inventoryQuantity > 0) await createVariant(newProductId, v, channels);
+        if (v.inventoryQuantity > 0) await createVariant(newProductId, v, channels);
     }
 }
 
 async function createVariant(prodId: string, v: any, channels: any[]) {
     const sku = v.sku || `IMP-${Math.floor(Math.random() * 999999)}`;
-    const shopifyPrice = parseFloat(v.price); 
+    const shopifyPrice = parseFloat(v.price);
 
     const createVarQuery = `
     mutation CreateVar($input: ProductVariantCreateInput!) {
@@ -292,7 +292,7 @@ async function createVariant(prodId: string, v: any, channels: any[]) {
         console.log("------------------------------------------------");
         console.log("🛠️  STARTING SHOPIFY -> SALEOR IMPORT");
         console.log("------------------------------------------------");
-        
+
         const channels = await getSaleorChannels();
         if (channels.length === 0) return console.error("❌ No Channels found. Import aborted.");
 

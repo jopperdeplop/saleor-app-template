@@ -8,9 +8,9 @@ export const config = { api: { bodyParser: false } };
 // --- HELPERS ---
 
 async function getRawBody(req: NextApiRequest): Promise<Buffer> {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  return Buffer.concat(chunks);
+    const chunks = [];
+    for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    return Buffer.concat(chunks);
 }
 
 function textToEditorJs(text: string) {
@@ -28,8 +28,8 @@ function slugify(text: string | null | undefined) {
         .toString()
         .toLowerCase()
         .trim()
-        .replace(/\s+/g, '-')     
-        .replace(/[^\w\-]+/g, '') 
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]+/g, '')
         .replace(/\-\-+/g, '-');
 }
 
@@ -100,7 +100,7 @@ async function generateSalpContent(shopifyProduct: any) {
         const text = response.text();
         const jsonString = text.replace(/```json\n?|```/g, "").trim();
         const data = JSON.parse(jsonString);
-        
+
         console.log(`   ✅ AI Generated Description`);
         return data;
 
@@ -116,13 +116,13 @@ async function getSaleorChannels() {
     const query = `{ channels { id slug currencyCode isActive } }`;
     const res = await fetch(process.env.SALEOR_API_URL!, {
         method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': process.env.SALEOR_TOKEN! 
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': process.env.SALEOR_TOKEN!
         },
         body: JSON.stringify({ query })
     });
-    const json = await res.json();
+    const json: any = await res.json();
     return json.data?.channels || [];
 }
 
@@ -143,7 +143,7 @@ async function getSaleorProductDetails(slug: string) {
         headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
         body: JSON.stringify({ query, variables: { slug } })
     });
-    const json = await res.json();
+    const json: any = await res.json();
     return json.data?.product || null;
 }
 
@@ -162,7 +162,7 @@ async function findSaleorProductByShopifyId(shopifyId: number) {
             headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
             body: JSON.stringify({ query: metaQuery, variables: { shopifyId: searchString } })
         });
-        const metaJson = await metaRes.json();
+        const metaJson: any = await metaRes.json();
         const metaId = metaJson.data?.products?.edges?.[0]?.node?.id;
         if (metaId) return metaId;
     } catch (e) { /* ignore */ }
@@ -179,7 +179,7 @@ async function findSaleorProductByShopifyId(shopifyId: number) {
         headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
         body: JSON.stringify({ query: searchQuery, variables: { search: searchString } })
     });
-    const json = await res.json();
+    const json: any = await res.json();
     const edges = json.data?.products?.edges || [];
     const match = edges.find((e: any) => e.node.slug.endsWith(`-${shopifyId}`));
     return match ? match.node.id : null;
@@ -199,7 +199,7 @@ async function deleteSaleorProduct(id: string) {
     });
 }
 
-async function updateProductMetadata(id: string, metadata: {key: string, value: string}[]) {
+async function updateProductMetadata(id: string, metadata: { key: string, value: string }[]) {
     const query = `
     mutation UpdateMeta($id: ID!, $input: [MetadataInput!]!) {
         updateMetadata(id: $id, input: $input) {
@@ -209,9 +209,9 @@ async function updateProductMetadata(id: string, metadata: {key: string, value: 
     await fetch(process.env.SALEOR_API_URL!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
-        body: JSON.stringify({ 
-            query, 
-            variables: { id, input: metadata } 
+        body: JSON.stringify({
+            query,
+            variables: { id, input: metadata }
         })
     });
 }
@@ -223,7 +223,7 @@ async function syncProductToSaleor(shopifyPayload: any) {
     const deterministicSlug = `${slugify(p.title)}-${p.id}`;
     const shopifyIdStr = String(p.id);
     const incomingHash = calculateContentHash(p);
-    
+
     console.log(`   🔄 Processing "${p.title}"...`);
 
     // 1. Fetch Existing Saleor Data
@@ -234,15 +234,15 @@ async function syncProductToSaleor(shopifyPayload: any) {
 
     // 2. Check Hash to avoid redundant AI/Content Updates
     let shouldUpdateContent = false;
-    
+
     if (isNewProduct) {
         console.log(`   ✨ New Product Detected.`);
         shouldUpdateContent = true;
     } else {
         const storedHash = existingProduct.metadata?.find((m: any) => m.key === "content_hash")?.value;
-        
+
         if (storedHash === incomingHash) {
-            console.log(`   ✅ Content matches (Hash: ${incomingHash.substring(0,6)}). Skipping AI & Content Update.`);
+            console.log(`   ✅ Content matches (Hash: ${incomingHash.substring(0, 6)}). Skipping AI & Content Update.`);
             shouldUpdateContent = false;
         } else {
             console.log(`   📝 Content changed (Hash mismatch). Triggering AI & Content Update.`);
@@ -251,7 +251,7 @@ async function syncProductToSaleor(shopifyPayload: any) {
     }
 
     // 3. Prepare Data
-    let finalName = p.title; 
+    let finalName = p.title;
     let finalDescription = textToEditorJs(p.body_html || p.title);
     let finalSeo = { title: p.title, description: "" };
 
@@ -260,9 +260,9 @@ async function syncProductToSaleor(shopifyPayload: any) {
         const aiContent = await generateSalpContent(p);
         if (aiContent) {
             finalDescription = textToEditorJs(aiContent.description);
-            finalSeo = { 
-                title: aiContent.seo_title, 
-                description: aiContent.seo_description 
+            finalSeo = {
+                title: aiContent.seo_title,
+                description: aiContent.seo_description
             };
         }
     }
@@ -298,15 +298,15 @@ async function syncProductToSaleor(shopifyPayload: any) {
             headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
             body: JSON.stringify({ query: createQuery, variables: createVars })
         });
-        const createJson = await createRes.json();
+        const createJson: any = await createRes.json();
         const createErrors = createJson.data?.productCreate?.errors || [];
-        
+
         if (createJson.data?.productCreate?.product?.id) {
             productId = createJson.data.productCreate.product.id;
         } else {
             // RACE CONDITION HANDLING
             const isSlugError = createErrors.some((e: any) => e.field === 'slug');
-            
+
             if (isSlugError) {
                 console.log("   ⚠️ Race Condition Detected: Product created by another process. Skipping heavy sync.");
                 // Fetch ID to allow variant sync, but skip everything else
@@ -332,16 +332,16 @@ async function syncProductToSaleor(shopifyPayload: any) {
         await fetch(process.env.SALEOR_API_URL!, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
-            body: JSON.stringify({ 
-                query: updateQuery, 
-                variables: { 
-                    id: productId, 
-                    input: { 
-                        name: finalName, 
+            body: JSON.stringify({
+                query: updateQuery,
+                variables: {
+                    id: productId,
+                    input: {
+                        name: finalName,
                         description: finalDescription,
                         seo: finalSeo
-                    } 
-                } 
+                    }
+                }
             })
         });
     }
@@ -350,7 +350,7 @@ async function syncProductToSaleor(shopifyPayload: any) {
     if (shouldUpdateContent && !skipHeavySync) {
         const shopifyImages = p.images || [];
         const currentMediaCount = existingProduct?.media?.length || 0;
-        
+
         if (shopifyImages.length > 0) {
             if (currentMediaCount === 0) {
                 console.log(`   📸 Uploading ${shopifyImages.length} images...`);
@@ -363,9 +363,9 @@ async function syncProductToSaleor(shopifyPayload: any) {
                         await fetch(process.env.SALEOR_API_URL!, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
-                            body: JSON.stringify({ 
-                                query: mediaQuery, 
-                                variables: { product: productId, image: img.src, alt: img.alt || "" } 
+                            body: JSON.stringify({
+                                query: mediaQuery,
+                                variables: { product: productId, image: img.src, alt: img.alt || "" }
                             })
                         });
                     }
@@ -411,7 +411,7 @@ async function syncProductToSaleor(shopifyPayload: any) {
 }
 
 async function ensureVariantExists(prodId: string, v: any, channels: any[]) {
-    const sku = v.sku || `IMP-${v.id}`; 
+    const sku = v.sku || `IMP-${v.id}`;
     const price = parseFloat(v.price);
     let stock = v.inventory_quantity;
     if (stock < 3) stock = 0;
@@ -423,16 +423,16 @@ async function ensureVariantExists(prodId: string, v: any, channels: any[]) {
             errors { field message }
         }
     }`;
-    
+
     const vars = {
         input: {
             product: prodId,
             sku: sku,
             attributes: [],
             trackInventory: true,
-            stocks: [{ 
-                warehouse: process.env.SALEOR_WAREHOUSE_ID, 
-                quantity: stock 
+            stocks: [{
+                warehouse: process.env.SALEOR_WAREHOUSE_ID,
+                quantity: stock
             }]
         }
     };
@@ -442,13 +442,13 @@ async function ensureVariantExists(prodId: string, v: any, channels: any[]) {
         headers: { 'Content-Type': 'application/json', 'Authorization': process.env.SALEOR_TOKEN! },
         body: JSON.stringify({ query: createQuery, variables: vars })
     });
-    const json = await res.json();
-    
+    const json: any = await res.json();
+
     let variantId = json.data?.productVariantCreate?.productVariant?.id;
     const errors = json.data?.productVariantCreate?.errors || [];
 
     if (!variantId && errors.some((e: any) => e.field === 'sku')) {
-        return; 
+        return;
     }
 
     if (!variantId) return;

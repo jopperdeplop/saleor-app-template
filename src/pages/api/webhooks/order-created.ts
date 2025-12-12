@@ -13,13 +13,13 @@ import { generateShippingLabel } from "@/trigger/orders";
  *
  * orderCreatedWebhook.getWebhookManifest() must be called in api/manifest too!
  */
-// export const orderCreatedWebhook = new SaleorAsyncWebhook<OrderCreatedWebhookPayloadFragment>({
-//   name: "Order Created in Saleor",
-//   webhookPath: "api/webhooks/order-created",
-//   event: "ORDER_CREATED",
-//   apl: saleorApp.apl,
-//   query: OrderCreatedSubscriptionDocument,
-// });
+export const orderCreatedWebhook = new SaleorAsyncWebhook<OrderCreatedWebhookPayloadFragment>({
+  name: "Order Created in Saleor",
+  webhookPath: "api/webhooks/order-created",
+  event: "ORDER_CREATED",
+  apl: saleorApp.apl,
+  query: OrderCreatedSubscriptionDocument,
+});
 
 // export default orderCreatedWebhook.createHandler(async (req, res, ctx) => {
 //   const { payload } = ctx;

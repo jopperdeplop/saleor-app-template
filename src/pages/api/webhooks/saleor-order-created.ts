@@ -28,7 +28,7 @@ async function getShopifyVariantIdBySku(sku: string) {
         body: JSON.stringify({ query })
     });
 
-    const json = await res.json();
+    const json: any = await res.json();
     // Returns "gid://shopify/ProductVariant/12345..."
     return json.data?.productVariants?.edges?.[0]?.node?.id || null;
 }
@@ -104,7 +104,7 @@ async function createShopifyOrder(saleorOrder: any) {
         body: JSON.stringify(payload)
     });
 
-    const json = await response.json();
+    const json: any = await response.json();
     if (json.errors) {
         throw new Error(JSON.stringify(json.errors));
     }
@@ -121,23 +121,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // 1. Validate Event Type
         // Saleor sends the event type in the header
         const eventType = req.headers['saleor-event'];
-        
+
         if (eventType !== 'order_fully_paid' && eventType !== 'order_created') {
             // We usually wait for "Fully Paid" to ensure we don't ship unpaid items
             console.log(`ℹ️ Ignoring event: ${eventType}`);
             return res.status(200).send('Ignored');
         }
 
-        const orderData = req.body; 
+        const orderData = req.body;
         // Note: In production, verify 'saleor-signature' header here!
 
         console.log(`⚡ Processing Saleor Order #${orderData.number || 'Unknown'}`);
 
         // 2. Push to Shopify
         const shopifyOrder = await createShopifyOrder(orderData);
-        
+
         console.log(`✅ Created Shopify Order #${shopifyOrder.id} (Name: ${shopifyOrder.name})`);
-        
+
         res.status(200).send('Synced');
 
     } catch (error) {

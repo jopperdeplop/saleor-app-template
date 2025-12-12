@@ -8,16 +8,16 @@ const TEST_PRODUCT_NAME = "The Minimal Snowboard";
 const TEST_BRAND_NAME = "SaleorDevelopmentStore";
 
 const SALEOR_URL = process.env.SALEOR_API_URL!;
-const SALEOR_HEADERS = { 
-    'Content-Type': 'application/json', 
-    'Authorization': process.env.SALEOR_TOKEN! 
+const SALEOR_HEADERS = {
+    'Content-Type': 'application/json',
+    'Authorization': process.env.SALEOR_TOKEN!
 };
 
 // We will fetch these dynamically or use from env
 const EXPECTED_PAGE_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!;
 
 // --- HELPER ---
-async function saleorFetch(query: string, variables: any = {}) {
+async function saleorFetch(query: string, variables: any = {}): Promise<any> {
     const res = await fetch(SALEOR_URL, {
         method: 'POST',
         headers: SALEOR_HEADERS,
@@ -72,10 +72,10 @@ async function runDiagnostic() {
             errors { field message }
         }
     }`;
-    
+
     const createData = await saleorFetch(createPageQuery, { type: EXPECTED_PAGE_TYPE_ID });
     const tempPage = createData.data?.pageCreate?.page;
-    
+
     if (!tempPage) {
         console.error("❌ FAILED TO CREATE TEMP PAGE:");
         console.error(JSON.stringify(createData.data?.pageCreate?.errors));
@@ -88,7 +88,7 @@ async function runDiagnostic() {
     // ---------------------------------------------------------
     console.log("\n[3/6] 🛠️  CREATING REPLACEMENT ATTRIBUTE...");
     // Random suffix to avoid slug collisions
-    const suffix = Math.floor(Math.random() * 1000); 
+    const suffix = Math.floor(Math.random() * 1000);
     const newAttrName = `Brand (Fixed ${suffix})`;
     const newAttrSlug = `brand-fixed-${suffix}`;
 
@@ -122,7 +122,7 @@ async function runDiagnostic() {
     // STEP 4: ASSIGN ATTRIBUTE TO PRODUCT TYPE
     // ---------------------------------------------------------
     console.log("\n[4/6] Assigning New Attribute to Product Type...");
-    
+
     // UPDATED: Changed 'productTypeAttributeAssign' to 'productAttributeAssign'
     const assignQuery = `
     mutation Assign($pt: ID!, $attr: ID!) {
@@ -137,7 +137,7 @@ async function runDiagnostic() {
     }`;
 
     const assignData = await saleorFetch(assignQuery, { pt: productTypeId, attr: newAttr.id });
-    
+
     // Check for top level errors (like mutation name not found)
     if (assignData.errors) {
         console.error("❌ CRITICAL API ERROR (Step 4):");
@@ -154,21 +154,21 @@ async function runDiagnostic() {
     // Check immediate response to see if it stuck
     const immediateProdAttrs = assignData.data?.productAttributeAssign?.productType?.productAttributes || [];
     const immediateVarAttrs = assignData.data?.productAttributeAssign?.productType?.variantAttributes || [];
-    
-    if (immediateProdAttrs.some((a:any) => a.id === newAttr.id)) {
+
+    if (immediateProdAttrs.some((a: any) => a.id === newAttr.id)) {
         console.log(`   ✅ API reports success. Attribute is in 'productAttributes'.`);
-    } else if (immediateVarAttrs.some((a:any) => a.id === newAttr.id)) {
+    } else if (immediateVarAttrs.some((a: any) => a.id === newAttr.id)) {
         console.log(`   ⚠️ API reports success, but Attribute ended up in 'variantAttributes' instead.`);
     } else {
-         console.warn(`   ⚠️ API reports success, but Attribute is MISSING from immediate response list.`);
-         console.warn(`   Response Dump:`, JSON.stringify(assignData));
+        console.warn(`   ⚠️ API reports success, but Attribute is MISSING from immediate response list.`);
+        console.warn(`   Response Dump:`, JSON.stringify(assignData));
     }
 
     // ---------------------------------------------------------
     // STEP 4.5: VERIFY ASSIGNMENT PROPAGATION
     // ---------------------------------------------------------
     console.log("\n[4.5/6] Verifying Attribute Assignment...");
-    
+
     // Simple delay to allow for DB propagation
     await new Promise(r => setTimeout(r, 2000));
 
@@ -182,18 +182,18 @@ async function runDiagnostic() {
     const verifyData = await saleorFetch(verifyQuery, { id: productTypeId });
     const pAttributes = verifyData.data?.productType?.productAttributes || [];
     const vAttributes = verifyData.data?.productType?.variantAttributes || [];
-    
-    const isAssignedProd = pAttributes.some((a:any) => a.id === newAttr.id);
-    const isAssignedVar = vAttributes.some((a:any) => a.id === newAttr.id);
+
+    const isAssignedProd = pAttributes.some((a: any) => a.id === newAttr.id);
+    const isAssignedVar = vAttributes.some((a: any) => a.id === newAttr.id);
 
     if (isAssignedVar) {
-         console.log("   ⚠️ Attribute verified, but it is a VARIANT Attribute, not Product Attribute.");
-         // proceed anyway to see if it works
+        console.log("   ⚠️ Attribute verified, but it is a VARIANT Attribute, not Product Attribute.");
+        // proceed anyway to see if it works
     } else if (!isAssignedProd) {
         console.error("❌ ASSIGNMENT VERIFICATION FAILED.");
         console.error("   The attribute was assigned but does not appear on the Product Type yet.");
-        console.error("   Current Product Attributes:", JSON.stringify(pAttributes.map((a:any) => a.name)));
-        console.error("   Current Variant Attributes:", JSON.stringify(vAttributes.map((a:any) => a.name)));
+        console.error("   Current Product Attributes:", JSON.stringify(pAttributes.map((a: any) => a.name)));
+        console.error("   Current Variant Attributes:", JSON.stringify(vAttributes.map((a: any) => a.name)));
         return;
     } else {
         console.log("   ✅ Attribute confirmed on Product Type.");
@@ -203,7 +203,7 @@ async function runDiagnostic() {
     // STEP 5: TEST ASSIGNMENT
     // ---------------------------------------------------------
     console.log("\n[5/6] Testing Assignment with New Attribute...");
-    
+
     const payload = {
         id: prodNode.id,
         input: {
@@ -213,7 +213,7 @@ async function runDiagnostic() {
             }]
         }
     };
-    
+
     const updateQuery = `
     mutation UpdateProductBrand($id: ID!, $input: ProductInput!) {
         productUpdate(id: $id, input: $input) {
@@ -230,7 +230,7 @@ async function runDiagnostic() {
 
     const updateData = await saleorFetch(updateQuery, payload);
     const result = updateData.data?.productUpdate;
-    
+
     const assignedAttr = result?.product?.attributes?.find((a: any) => a.attribute.id === newAttr.id);
 
     if (assignedAttr && assignedAttr.values.length > 0) {
@@ -253,7 +253,7 @@ async function runDiagnostic() {
     const deleteQuery = `mutation Del($id: ID!) { pageDelete(id: $id) { errors { field } } }`;
     await saleorFetch(deleteQuery, { id: tempPage.id });
     console.log(`   ✅ Cleanup done.`);
-    
+
     console.log("\n--------------------------------------------------");
 }
 

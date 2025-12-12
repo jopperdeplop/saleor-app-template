@@ -5,9 +5,9 @@ dotenv.config();
 
 // --- CONFIG ---
 const SALEOR_URL = process.env.SALEOR_API_URL!;
-const SALEOR_HEADERS = { 
-    'Content-Type': 'application/json', 
-    'Authorization': process.env.SALEOR_TOKEN! 
+const SALEOR_HEADERS = {
+    'Content-Type': 'application/json',
+    'Authorization': process.env.SALEOR_TOKEN!
 };
 const SHOPIFY_HEADERS = {
     'Content-Type': 'application/json',
@@ -36,7 +36,7 @@ async function getSaleorChannels() {
         headers: SALEOR_HEADERS,
         body: JSON.stringify({ query })
     });
-    const json = await res.json();
+    const json: any = await res.json();
     return json.data?.channels || [];
 }
 
@@ -69,11 +69,11 @@ async function fetchShopifyProducts() {
 
     try {
         const res = await fetch(process.env.SHOPIFY_GRAPHQL_URL!, {
-            method: 'POST', 
-            headers: SHOPIFY_HEADERS, 
+            method: 'POST',
+            headers: SHOPIFY_HEADERS,
             body: JSON.stringify({ query })
         });
-        const data = await res.json();
+        const data: any = await res.json();
         const products = data.data?.products?.edges || [];
         console.log(`✅ Found ${products.length} products to import.`);
         return products;
@@ -110,8 +110,8 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
         headers: SALEOR_HEADERS,
         body: JSON.stringify({ query: createProductQuery, variables: productVars })
     });
-    const prodJson = await prodRes.json();
-    
+    const prodJson: any = await prodRes.json();
+
     // Detailed Error Logging for Product
     if (prodJson.data?.productCreate?.errors?.length > 0) {
         console.error("   ❌ Product Creation Failed:", JSON.stringify(prodJson.data.productCreate.errors));
@@ -119,7 +119,7 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
     }
 
     const newProductId = prodJson.data?.productCreate?.product?.id;
-    if(!newProductId) {
+    if (!newProductId) {
         console.error("   ❌ Unknown Error: No Product ID returned.");
         return;
     }
@@ -171,7 +171,7 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
     // 4. Create Variants
     for (const vEdge of p.variants.edges) {
         const v = vEdge.node;
-        if(v.inventoryQuantity > 0) {
+        if (v.inventoryQuantity > 0) {
             await createVariant(newProductId, v, channels);
         }
     }
@@ -179,7 +179,7 @@ async function createInSaleor(shopifyNode: any, channels: any[]) {
 
 async function createVariant(prodId: string, v: any, channels: any[]) {
     const sku = v.sku || `IMP-${Math.floor(Math.random() * 999999)}`;
-    const shopifyPrice = parseFloat(v.price); 
+    const shopifyPrice = parseFloat(v.price);
 
     // FIXED: Added attributes: [] and trackInventory: true matching Python logic
     const createVarQuery = `
@@ -196,9 +196,9 @@ async function createVariant(prodId: string, v: any, channels: any[]) {
             sku: sku,
             attributes: [],       // <--- Added based on Python script
             trackInventory: true, // <--- Ensure stock tracking is on
-            stocks: [{ 
-                warehouse: process.env.SALEOR_WAREHOUSE_ID, 
-                quantity: v.inventoryQuantity 
+            stocks: [{
+                warehouse: process.env.SALEOR_WAREHOUSE_ID,
+                quantity: v.inventoryQuantity
             }]
         }
     };
@@ -208,8 +208,8 @@ async function createVariant(prodId: string, v: any, channels: any[]) {
         headers: SALEOR_HEADERS,
         body: JSON.stringify({ query: createVarQuery, variables: varVars })
     });
-    const varJson = await varRes.json();
-    
+    const varJson: any = await varRes.json();
+
     // CRITICAL FIX: Print the ACTUAL error message from Saleor
     if (varJson.data?.productVariantCreate?.errors?.length > 0) {
         console.error(`      ❌ Failed to create variant ${sku}`);
@@ -251,7 +251,7 @@ async function createVariant(prodId: string, v: any, channels: any[]) {
     try {
         console.log("------------------------------------------------");
         console.log("🛠️  STARTING IMPORT (WITH FIXES)");
-        
+
         const channels = await getSaleorChannels();
         if (channels.length === 0) {
             console.error("❌ No Channels found in Saleor.");

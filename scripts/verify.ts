@@ -5,26 +5,26 @@ dotenv.config();
 // --- CONFIGURATION ---
 // We use the NEW Attribute ID from your successful diagnostic run
 // You should also update this in your .env file
-const NEW_BRAND_ATTRIBUTE_ID = "QXR0cmlidXRlOjQ0MQ=="; 
+const NEW_BRAND_ATTRIBUTE_ID = "QXR0cmlidXRlOjQ0MQ==";
 
 const TEST_BRAND_NAME = "Integration Test Brand";
 const TEST_PRODUCT_NAME = "Integration Test Product";
 
 const SALEOR_URL = process.env.SALEOR_API_URL!;
-const SALEOR_HEADERS = { 
-    'Content-Type': 'application/json', 
-    'Authorization': process.env.SALEOR_TOKEN! 
+const SALEOR_HEADERS = {
+    'Content-Type': 'application/json',
+    'Authorization': process.env.SALEOR_TOKEN!
 };
-const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!; 
+const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID!;
 const PRODUCT_TYPE_ID = process.env.SALEOR_PRODUCT_TYPE_ID!;
 
-async function saleorFetch(query: string, variables: any = {}) {
+async function saleorFetch(query: string, variables: any = {}): Promise<any> {
     const res = await fetch(SALEOR_URL, {
         method: 'POST',
         headers: SALEOR_HEADERS,
         body: JSON.stringify({ query, variables })
     });
-    const json = await res.json();
+    const json: any = await res.json();
     if (json.errors) {
         console.error("❌ API ERROR:", JSON.stringify(json.errors, null, 2));
         throw new Error("API Error");
