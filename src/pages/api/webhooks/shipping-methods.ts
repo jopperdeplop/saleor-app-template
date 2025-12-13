@@ -142,20 +142,20 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     // Map Shippo Rates to Saleor Response
     // WORKAROUND: Force EUR currency because Shippo Test Carriers return USD.
     // Saleor will hide USD rates if store is in EUR.
-    // STRUCTURE FIX: Saleor expects `price` object, not flat amount/currency.
+    // STRUCTURE REVERT: Search results imply flat fields are expected by webhook, 
+    // effectively "amount" and "currency" side-by-side. 
+    // "Money object" in docs likely refers to internal Saleor representation.
     const response = rates.map((rate: any) => ({
       id: rate.object_id,
       name: `[Shippo] ${rate.provider} ${rate.servicelevel.name}`,
-      price: {
-        amount: parseFloat(rate.amount).toFixed(2), // "15.00"
-        currency: "EUR" // <--- FORCED for testing
-      },
+      amount: parseFloat(rate.amount).toFixed(2), // "15.00" (String)
+      currency: "EUR", // <--- FORCED for testing
       maximum_delivery_days: rate.days ? parseInt(rate.days, 10) : 7
     }));
 
     console.log(`✅ Returning ${response.length} rates to Saleor.`);
     if (response.length > 0) {
-      console.log(`   Sample Rate: ${response[0].name} - ${response[0].price.amount} (${typeof response[0].price.amount}) ${response[0].price.currency}`);
+      console.log(`   Sample Rate: ${response[0].name} - ${response[0].amount} (${typeof response[0].amount}) ${response[0].currency}`);
     }
 
     return res.status(200).json(response);
