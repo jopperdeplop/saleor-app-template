@@ -107,15 +107,15 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     email: "customer@example.com" // Placeholder, email often not in address payload
   };
 
-  // Default From Address (Warehouse) - Ideally fetch from Saleor or Env
-  // Using the one from Orders.ts logic or better, a fixed one for now.
+  // Default From Address (Warehouse)
+  // TODO: Fetch this from Environment Variables or Saleor "Default Warehouse"
   const addressFrom = {
-    name: "Main Warehouse",
-    street1: "215 Clayton st",
-    city: "San Francisco",
-    state: "CA",
-    zip: "94117",
-    country: "US"
+    name: "EU Warehouse",
+    street1: "Kalverstraat 21",
+    city: "Amsterdam",
+    state: "NH",
+    zip: "1012 NX",
+    country: "NL"
   };
 
   // Map Lines to Parcels (Simplified: 1 big box or weight based)
