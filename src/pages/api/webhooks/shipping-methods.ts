@@ -142,26 +142,26 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     // Map Shippo Rates to Saleor Response
     // WORKAROUND: Force EUR currency because Shippo Test Carriers return USD.
     // Saleor will hide USD rates if store is in EUR.
-    const response = rates.map((rate: any, index: number) => {
-      // DEBUG: Hardcoding values to prove ID valid
+    const response = rates.map((rate: any) => {
+      // FIX: Shippo SDK often uses camelCase `objectId`, but raw API is `object_id`.
+      // Check both to be safe.
+      const shippoId = rate.objectId || rate.object_id;
+
+      if (!shippoId) {
+        console.warn("⚠️ Rate missing ID:", rate);
+      }
+
+      const days = rate.days ? parseInt(rate.days, 10) : 7;
+      const safeDays = isNaN(days) ? 7 : days;
+
       return {
-        id: rate.object_id,
-        name: `[Shippo Safe] Rate ${index + 1}`, // Hardcoded Name
-        amount: "12.34", // Hardcoded Amount
-        currency: "EUR",
-        maximum_delivery_days: 7,
+        id: shippoId,
+        name: `[Shippo] ${rate.provider} ${rate.servicelevel?.name || "Standard"}`,
+        amount: parseFloat(rate.amount).toFixed(2), // Ensure valid "15.00" string
+        currency: "EUR", // <--- FORCED for testing
+        maximum_delivery_days: safeDays,
         active: true
       };
-    });
-
-    // DEBUG: Add a hardcoded rate to rule out data mapping issues
-    response.push({
-      id: "test-rate-123",
-      name: "[DEBUG] Static Rate",
-      amount: "1.00",
-      currency: "EUR",
-      maximum_delivery_days: 3,
-      active: true
     });
 
     // Debug Log
