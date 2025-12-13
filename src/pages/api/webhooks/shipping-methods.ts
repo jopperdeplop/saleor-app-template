@@ -145,7 +145,7 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     const response = rates.map((rate: any) => ({
       id: rate.object_id,
       name: `[Shippo] ${rate.provider} ${rate.servicelevel.name}`,
-      amount: parseFloat(rate.amount), // Ensure this is a Number, not a String
+      amount: parseFloat(rate.amount).toFixed(2), // Saleor expects "15.00" (String)
       currency: "EUR", // <--- FORCED for testing
       maximum_delivery_days: rate.days ? parseInt(rate.days, 10) : 7
     }));
