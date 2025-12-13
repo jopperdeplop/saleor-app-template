@@ -87,26 +87,50 @@ export async function createLabelForOrder({
     addressTo,
     parcels,
     orderId,
-    customsDeclaration
+    customsDeclaration,
+    shippingMethodName // OPTIONAL: Try to match this specific method
 }: {
     addressFrom: any;
     addressTo: any;
     parcels: any[];
     orderId: string;
     customsDeclaration?: any;
+    shippingMethodName?: string;
 }) {
     const rates = await getShippingRates({ addressFrom, addressTo, parcels, customsDeclaration });
-    
+
     if (rates.length === 0) {
         throw new Error("No shipping rates found.");
     }
 
-    const bestRate = rates[0]; // Cheapest
-    console.log(`   💰 Best Rate for ${orderId}: ${bestRate.provider} - ${bestRate.amount} ${bestRate.currency}`);
+    let selectedRate = rates[0]; // Default to cheapest
 
-    const result = await purchaseLabel(bestRate.objectId);
+    if (shippingMethodName) {
+        // Try to find the rate that matches the user's selection
+        // We match by checking if the rate's constructed name is part of the selection or vice versa
+        // ideally exact match: `${rate.provider} ${rate.servicelevel.name}`
+        const match = rates.find((rate: any) => {
+            const rateName = `${rate.provider} ${rate.servicelevel?.name || ""}`.trim();
+            return shippingMethodName.includes(rateName) || rateName === shippingMethodName;
+        });
+
+        if (match) {
+            console.log(`   ✅ Matched selected rate: ${match.provider} - ${match.amount} ${match.currency}`);
+            selectedRate = match;
+        } else {
+            console.warn(`   ⚠️ Could not match shipping method '${shippingMethodName}'. Defaulting to cheapest: ${selectedRate.provider}`);
+        }
+    }
+
+    console.log(`   💰 Buying Label for ${orderId}: ${selectedRate.provider} - ${selectedRate.amount} ${selectedRate.currency}`);
+
+    // FIX: Ensure we use the correct ID property (objectId vs object_id)
+    // Shippo SDK types declare `objectId`, but runtime might vary or previous issues suggested ambiguity.
+    const rateAny = selectedRate as any;
+    const rateId = rateAny.objectId || rateAny.object_id;
+    const result = await purchaseLabel(rateId);
     return {
         ...result,
-        carrier: bestRate.provider
+        carrier: selectedRate.provider
     };
 }

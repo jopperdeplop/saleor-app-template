@@ -156,7 +156,7 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
 
       return {
         id: shippoId,
-        name: `[Shippo] ${rate.provider} ${rate.servicelevel?.name || "Standard"}`,
+        name: `${rate.provider} ${rate.servicelevel?.name || "Standard"}`, // Removed [Shippo] prefix
         amount: parseFloat(rate.amount).toFixed(2), // Ensure valid "15.00" string
         currency: "EUR", // <--- FORCED for testing
         maximum_delivery_days: safeDays,
