@@ -143,19 +143,17 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     // WORKAROUND: Force EUR currency because Shippo Test Carriers return USD.
     // Saleor will hide USD rates if store is in EUR.
     const response = rates.map((rate: any) => {
-      // FIX: Shippo SDK often uses camelCase `objectId`, but raw API is `object_id`.
-      // Check both to be safe.
-      const shippoId = rate.objectId || rate.object_id;
-
-      if (!shippoId) {
-        console.warn("⚠️ Rate missing ID:", rate);
-      }
+      // FIX: Stable IDs are required for correct Storefront behavior.
+      // Shippo generates a NEW ID for every quote (every webhook call).
+      // If we return a new ID, Saleor thinks the selected method disappeared and reverts.
+      // We use a hash of Provider + Service Level to create a STABLE ID.
+      const stableId = Buffer.from(`${rate.provider}-${rate.servicelevel?.name}`).toString('base64');
 
       const days = rate.days ? parseInt(rate.days, 10) : 7;
       const safeDays = isNaN(days) ? 7 : days;
 
       return {
-        id: shippoId,
+        id: stableId, // STABLE ID for UI stability
         name: `${rate.provider} ${rate.servicelevel?.name || "Standard"}`, // Removed [Shippo] prefix
         amount: parseFloat(rate.amount).toFixed(2), // Ensure valid "15.00" string
         currency: "EUR", // <--- FORCED for testing

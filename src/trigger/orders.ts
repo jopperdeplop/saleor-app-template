@@ -126,14 +126,21 @@ export const generateShippingLabel = task({
             // D. Fetch Rates & Purchase Label
             logDebug(`      📦 Generating Label for Order ${orderId}...`);
 
-            labelData = await createLabelForOrder({
-                orderId: order.number,
-                addressFrom,
-                addressTo,
-                parcels,
-                customsDeclaration,
-                shippingMethodName: order.shippingMethod?.name // Pass the user's selection
-            });
+            // Declare labelData in scope
+            let labelData: any = null;
+
+            try {
+                labelData = await createLabelForOrder({
+                    orderId: order.number,
+                    addressFrom,
+                    addressTo,
+                    parcels,
+                    customsDeclaration,
+                    shippingMethodName: order.shippingMethod?.name // Pass the user's selection
+                });
+            } catch (err: any) {
+                logDebug(`      ❌ Shippo Error:`, err.message);
+            }
 
             if (labelData && warehouseNode) {
                 // E. Fulfillment
