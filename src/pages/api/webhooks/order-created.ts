@@ -38,8 +38,9 @@ export default async function handler(req: any, res: any) {
     console.log(`✅ EXTRACTED ORDER ID: ${order.id} (Number: ${order.number})`);
     console.log(`🚚 Triggering shipping label generation...`);
     try {
-      const handle = await generateShippingLabel.trigger({ orderId: order.id });
-      console.log(`   🚀 Task Triggered! Handle ID: ${handle.id}`);
+      // Use Order ID as idempotency key to prevent duplicate runs
+      const handle = await generateShippingLabel.trigger({ orderId: order.id }, { idempotencyKey: order.id });
+      console.log(`   🚀 Task Triggered! Handle ID: ${handle.id} (Idempotency Key: ${order.id})`);
     } catch (e) {
       console.error("   ❌ Failed to trigger task:", e);
     }

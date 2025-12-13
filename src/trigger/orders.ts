@@ -173,8 +173,15 @@ export const generateShippingLabel = task({
             }));
             metaInput.push({ key: "shippo_label_url", value: generatedLabels[0].labelUrl });
 
-            await client.mutation(UPDATE_ORDER_METADATA, { id: order.id, input: metaInput }).toPromise();
-            logDebug("   ✅ Trigger Job Complete: Metadata Updated.");
+            const result = await client.mutation(UPDATE_ORDER_METADATA, { id: order.id, input: metaInput }).toPromise();
+
+            if (result.error) {
+                logDebug("   ❌ Metadata Update Network/GraphQLError:", result.error);
+            } else if (result.data?.updateMetadata?.errors?.length > 0) {
+                logDebug("   ❌ Metadata Update Schema Errors:", result.data.updateMetadata.errors);
+            } else {
+                logDebug("   ✅ Trigger Job Complete: Metadata Updated Successfully.");
+            }
         }
 
         return { success: true, labels: generatedLabels };
