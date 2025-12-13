@@ -1,6 +1,6 @@
 import { task } from "@trigger.dev/sdk/v3";
 import { makeSaleorClient, ORDER_QUERY, WAREHOUSE_QUERY, FULFILLMENT_CREATE, UPDATE_ORDER_METADATA, SEARCH_QUERY } from "../lib/saleor-client";
-import { createLabelForOrder } from "../lib/shippo";
+import { getShippingRates, purchaseLabel } from "../lib/shippo";
 import { logDebug, OrderLine } from "../lib/utils";
 import { apl } from "../saleor-app";
 
@@ -123,16 +123,48 @@ export const generateShippingLabel = task({
                 };
             }
 
-            // D. Generate Label
+            // D. Fetch Rates & Purchase Label
             let labelData = null;
             try {
-                labelData = await createLabelForOrder({
-                    orderId: order.number,
+                // 1. Fetch Rates for this specific vendor sub-shipment
+                logDebug("      📦 Fetching live rates from Shippo...");
+                const rates = await getShippingRates({
                     addressFrom,
                     addressTo,
                     parcels,
                     customsDeclaration
                 });
+
+                if (!rates || rates.length === 0) {
+                    logDebug("      ❌ No rates found for this shipment.");
+                    continue; // Skip trying to buy label
+                }
+
+                // 2. Identify User Selection
+                const userChoiceName = order.shippingMethod?.name || "";
+                let selectedRate = null;
+
+                if (userChoiceName) {
+                    // Try to match provider and service level 
+                    // e.g. "USPS Priority Mail" vs "USPS" + "Priority Mail"
+                    selectedRate = rates.find((r: any) => {
+                        const serviceName = `${r.provider} ${r.servicelevel.name}`;
+                        return userChoiceName.toLowerCase().includes(r.provider.toLowerCase()) &&
+                            userChoiceName.toLowerCase().includes(r.servicelevel.name.toLowerCase());
+                    });
+                }
+
+                // 3. Fallback
+                if (!selectedRate) {
+                    logDebug(`      ⚠️ Could not strictly match "${userChoiceName}". Defaulting to cheapest.`);
+                    selectedRate = rates[0];
+                } else {
+                    logDebug(`      ✅ Matched User Choice: ${selectedRate.provider} ${selectedRate.servicelevel.name}`);
+                }
+
+                // 4. Purchase
+                labelData = await purchaseLabel(selectedRate.objectId);
+
             } catch (e: any) {
                 logDebug(`      ❌ Shippo Error:`, e.message);
             }

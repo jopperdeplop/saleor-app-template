@@ -5,6 +5,7 @@ import packageJson from "@/package.json";
 
 import { orderCreatedWebhook } from "./webhooks/order-created";
 import { orderFilterShippingMethodsWebhook } from "./webhooks/order-filter-shipping-methods";
+import { shippingMethodsWebhook } from "./webhooks/shipping-methods";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -21,31 +22,31 @@ export default createManifestHandler({
     const apiBaseURL = process.env.APP_API_BASE_URL ?? appBaseUrl;
 
     const extensionsForSaleor3_22: AppExtension[] = [
-        {
-          url: apiBaseURL + "/api/server-widget",
-          permissions: [],
-          mount: "PRODUCT_DETAILS_WIDGETS",
-          label: "Product Timestamps",
-          target: "WIDGET",
-          options: {
-            widgetTarget: {
-              method: "POST",
-            },
+      {
+        url: apiBaseURL + "/api/server-widget",
+        permissions: [],
+        mount: "PRODUCT_DETAILS_WIDGETS",
+        label: "Product Timestamps",
+        target: "WIDGET",
+        options: {
+          widgetTarget: {
+            method: "POST",
           },
         },
-        {
-          url: iframeBaseUrl+"/client-widget",
-          permissions: [],
-          mount: "ORDER_DETAILS_WIDGETS",
-          label: "Order widget example",
-          target: "WIDGET",
-          options: {
-            widgetTarget: {
-              method: "GET",
-            },
+      },
+      {
+        url: iframeBaseUrl + "/client-widget",
+        permissions: [],
+        mount: "ORDER_DETAILS_WIDGETS",
+        label: "Order widget example",
+        target: "WIDGET",
+        options: {
+          widgetTarget: {
+            method: "GET",
           },
         },
-      ]
+      },
+    ]
 
     const saleorMajor = schemaVersion && schemaVersion[0];
     const saleorMinor = schemaVersion && schemaVersion[1]
@@ -69,6 +70,7 @@ export default createManifestHandler({
          * This can be removed
          */
         "MANAGE_ORDERS",
+        "MANAGE_SHIPPING",
       ],
       id: "saleor.app",
       version: packageJson.version,
@@ -83,6 +85,7 @@ export default createManifestHandler({
       webhooks: [
         orderCreatedWebhook.getWebhookManifest(apiBaseURL),
         orderFilterShippingMethodsWebhook.getWebhookManifest(apiBaseURL),
+        shippingMethodsWebhook.getWebhookManifest(apiBaseURL),
       ],
       /**
        * Optionally, extend Dashboard with custom UIs

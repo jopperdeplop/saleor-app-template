@@ -65,6 +65,10 @@ query GetOrderDetails($id: ID!) {
         }
       }
     }
+    shippingMethod {
+      id
+      name
+    }
   }
 }
 `;
