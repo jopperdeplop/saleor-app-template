@@ -150,8 +150,18 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
       name: `[Shippo] ${rate.provider} ${rate.servicelevel.name}`,
       amount: parseFloat(rate.amount).toFixed(2), // "15.00" (String)
       currency: "EUR", // <--- FORCED for testing
-      maximum_delivery_days: rate.days ? parseInt(rate.days, 10) : 7
+      maximum_delivery_days: rate.days ? parseInt(rate.days, 10) : 7,
+      active: true // Not in Type Definition, but trying anyway as fallback
     }));
+
+    // DEBUG: Add a hardcoded rate to rule out data mapping issues
+    response.push({
+      id: "test-rate-123",
+      name: "[DEBUG] Static Rate",
+      amount: "1.00",
+      currency: "EUR",
+      maximum_delivery_days: 3
+    });
 
     console.log(`✅ Returning ${response.length} rates to Saleor.`);
     if (response.length > 0) {
