@@ -149,6 +149,11 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
       maximum_delivery_days: rate.days || 7
     }));
 
+    console.log(`✅ Returning ${response.length} rates to Saleor.`);
+    if (response.length > 0) {
+      console.log(`   Sample Rate: ${response[0].name} - ${response[0].amount} ${response[0].currency}`);
+    }
+
     return res.status(200).json(response);
   } catch (e) {
     console.error("Error fetching rates:", e);
