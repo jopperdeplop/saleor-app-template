@@ -144,15 +144,15 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     // Saleor will hide USD rates if store is in EUR.
     const response = rates.map((rate: any) => ({
       id: rate.object_id,
-      name: `${rate.provider} ${rate.servicelevel.name}`,
-      amount: rate.amount,
+      name: `[Shippo] ${rate.provider} ${rate.servicelevel.name}`,
+      amount: parseFloat(rate.amount), // Ensure this is a Number, not a String
       currency: "EUR", // <--- FORCED for testing
-      maximum_delivery_days: rate.days || 7
+      maximum_delivery_days: rate.days ? parseInt(rate.days, 10) : 7
     }));
 
     console.log(`✅ Returning ${response.length} rates to Saleor.`);
     if (response.length > 0) {
-      console.log(`   Sample Rate: ${response[0].name} - ${response[0].amount} ${response[0].currency}`);
+      console.log(`   Sample Rate: ${response[0].name} - ${response[0].amount} (${typeof response[0].amount}) ${response[0].currency}`);
     }
 
     return res.status(200).json(response);
