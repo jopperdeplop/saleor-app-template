@@ -107,15 +107,15 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     email: "customer@example.com" // Placeholder, email often not in address payload
   };
 
-  // Default From Address (Warehouse)
-  // TODO: Fetch this from Environment Variables or Saleor "Default Warehouse"
+  // Default From Address (Warehouse) - Reverted to US for Test Mode compatibility
+  // Shippo Test Carriers are mostly US-based.
   const addressFrom = {
-    name: "EU Warehouse",
-    street1: "Kalverstraat 21",
-    city: "Amsterdam",
-    state: "NH",
-    zip: "1012 NX",
-    country: "NL"
+    name: "Main Warehouse",
+    street1: "215 Clayton st",
+    city: "San Francisco",
+    state: "CA",
+    zip: "94117",
+    country: "US"
   };
 
   // Map Lines to Parcels (Simplified: 1 big box or weight based)
@@ -140,12 +140,13 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
     });
 
     // Map Shippo Rates to Saleor Response
-    // https://docs.saleor.io/docs/3.x/developer/api-reference/webhooks/objects/shipping-list-methods-for-checkout#response
+    // WORKAROUND: Force EUR currency because Shippo Test Carriers return USD.
+    // Saleor will hide USD rates if store is in EUR.
     const response = rates.map((rate: any) => ({
-      id: rate.object_id, // We use this purely as an identifier
+      id: rate.object_id,
       name: `${rate.provider} ${rate.servicelevel.name}`,
       amount: rate.amount,
-      currency: rate.currency,
+      currency: "EUR", // <--- FORCED for testing
       maximum_delivery_days: rate.days || 7
     }));
 
