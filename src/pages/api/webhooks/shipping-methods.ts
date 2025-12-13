@@ -160,7 +160,8 @@ export default shippingMethodsWebhook.createHandler(async (req, res, ctx) => {
       name: "[DEBUG] Static Rate",
       amount: "1.00",
       currency: "EUR",
-      maximum_delivery_days: 3
+      maximum_delivery_days: 3,
+      active: true
     });
 
     console.log(`✅ Returning ${response.length} rates to Saleor.`);
