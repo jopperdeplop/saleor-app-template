@@ -114,3 +114,29 @@ query GetOrdersByNumber($number: String!) {
   }
 }
 `;
+
+export const PRODUCT_CREATE = `
+mutation ProductCreate($input: ProductCreateInput!) {
+  productCreate(input: $input) {
+    product { id name }
+    errors { field message }
+  }
+}
+`;
+
+export const PRODUCT_VARIANT_CREATE = `
+mutation ProductVariantCreate($input: ProductVariantCreateInput!) {
+  productVariantCreate(input: $input) {
+    productVariant { id sku }
+    errors { field message }
+  }
+}
+`;
+
+export const PRODUCT_TYPE_QUERY = `
+query GetDefaultProductType {
+    productTypes(first: 1) {
+        edges { node { id name hasVariants } }
+    }
+}
+`;
