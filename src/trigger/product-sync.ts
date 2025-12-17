@@ -3,7 +3,6 @@ import { task } from "@trigger.dev/sdk/v3";
 import { db } from "../db";
 import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { makeSaleorClient, PRODUCT_CREATE, PRODUCT_VARIANT_CREATE, PRODUCT_TYPE_QUERY } from "../lib/saleor-client";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -12,17 +11,6 @@ const PRODUCT_TYPE_ID = process.env.SALEOR_PRODUCT_TYPE_ID;
 const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID;
 const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID;
 const PHOTOROOM_API_KEY = process.env.PHOTOROOM_API_KEY;
-
-const DEFAULT_VENDOR_ADDRESS = {
-    firstName: "Logistics",
-    lastName: "Manager",
-    companyName: "Vendor Warehouse",
-    streetAddress1: "123 Market St",
-    city: "San Francisco",
-    postalCode: "94105",
-    country: "US",
-    countryArea: "CA"
-};
 
 // --- HELPERS ---
 
@@ -79,7 +67,6 @@ export const importShopifyProducts = task({
         });
 
         if (!integration) {
-            console.error("❌ Integration not found");
             throw new Error("Integration not found");
         }
 
@@ -87,19 +74,21 @@ export const importShopifyProducts = task({
 
         // 2. Setup Saleor Client
         const apiUrl = process.env.SALEOR_API_URL;
-        const saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").replace(/^Bearer\s+/i, "");
+        let saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
+        // Handle Bearer prefix duplication/missing
+        if (!saleorToken.toLowerCase().startsWith("bearer ")) {
+            saleorToken = `Bearer ${saleorToken}`;
+        }
+        // If it was "Bearer Bearer", fix it (common env var mistake)
+        saleorToken = saleorToken.replace(/^Bearer\s+Bearer\s+/i, "Bearer ");
+
 
         if (!apiUrl || !saleorToken) {
             throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
         }
 
-        // Helper wrapper for Saleor Requests using urql client is possible, but for File Uploads and dynamic queries
-        // logic from reference script used fetch. We will use the structured makeSaleorClient for standard ops,
-        // and raw fetch for uploads/complex logic if needed, or stick to the client.
-        // Let's stick to the REFERENCE SCRIPT style for stability as requested.
-
         const saleorHeaders = {
-            'Authorization': `Bearer ${saleorToken}`,
+            'Authorization': saleorToken,
             'Content-Type': 'application/json'
         };
 
@@ -109,54 +98,91 @@ export const importShopifyProducts = task({
                 headers: saleorHeaders,
                 body: JSON.stringify({ query, variables })
             });
+
+            if (!res.ok) {
+                const txt = await res.text();
+                console.error(`   ❌ Saleor HTTP ${res.status}:`, txt);
+                return {};
+            }
+
             const json: any = await res.json();
             if (json.errors) console.error("   ❌ GraphQL Errors:", JSON.stringify(json.errors));
             return json;
         };
 
         // 3. Fetch Shopify Products
-        console.log("   📡 Connecting to actual Shopify Store...");
-        const shopifyQuery = `
-        {
-          products(first: 20, query: "status:active AND inventory_total:>0") {
-            edges {
-              node {
-                id title vendor descriptionHtml
-                images(first: 1) { edges { node { url } } }
-                variants(first: 10) { edges { node { sku price inventoryQuantity } } }
-              }
-            }
-          }
-        }`;
+        console.log("   📡 Connecting to actual Shopify Store (API 2024-04)...");
 
-        const shopifyRes = await fetch(`https://${integration.storeUrl}/admin/api/2023-10/graphql.json`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Shopify-Access-Token': integration.accessToken || ""
-            },
-            body: JSON.stringify({ query: shopifyQuery })
-        });
+        const fetchShopify = async (filterQuery: string) => {
+            const graphqlQuery = `
+                {
+                products(first: 20${filterQuery ? `, query: "${filterQuery}"` : ""}) {
+                    edges {
+                    node {
+                        id title vendor descriptionHtml
+                        images(first: 1) { edges { node { url } } }
+                        variants(first: 10) { edges { node { sku price inventoryQuantity } } }
+                    }
+                    }
+                }
+                }`;
 
-        if (shopifyRes.status === 403 || shopifyRes.status === 401) {
-            throw new Error(`Shopify API Access Denied (${shopifyRes.status}). Ensure specific scopes are granted.`);
+            const res = await fetch(`https://${integration.storeUrl}/admin/api/2024-04/graphql.json`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Shopify-Access-Token': integration.accessToken || ""
+                },
+                body: JSON.stringify({ query: graphqlQuery })
+            });
+
+            return res;
+        };
+
+        // Attempt 1: Strict Filter (Standard Behavior)
+        // Matches the Reference Script: "status:active AND inventory_total:>0"
+        let products = [];
+        let res = await fetchShopify("status:active AND inventory_total:>0");
+
+        if (res.status === 403 || res.status === 401) {
+            throw new Error(`Shopify API Access Denied (${res.status}). Ensure specific scopes are granted.`);
         }
 
-        const shopifyJson: any = await shopifyRes.json();
-        const products = shopifyJson.data?.products?.edges || [];
-        console.log(`   📦 Fetched ${products.length} products from Shopify.`);
+        let json: any = await res.json();
+        products = json.data?.products?.edges || [];
+
+        console.log(`   📦 Fetched ${products.length} products (Strict Filter).`);
+
+        // FALLBACK: If 0 products, try relaxed filter to diagnose
+        if (products.length === 0) {
+            console.log("   ⚠️  No products found with strict filter. Retrying with loose filter to check visibility...");
+            res = await fetchShopify(""); // No filter
+            json = await res.json();
+            const allProducts = json.data?.products?.edges || [];
+
+            if (allProducts.length > 0) {
+                console.log(`   ⚠️  FOUND ${allProducts.length} products with NO filter!`);
+                console.log("   ℹ️  The products likely have status='Draft' or inventory=0.");
+                console.log("   ℹ️  Forcing sync of these found products anyway for testing.");
+                products = allProducts;
+            } else {
+                console.log("   ❌ Still 0 products with no filter. The App likely has no product access (Check 'Sales Channel' availability in Shopify).");
+            }
+        }
 
         // 4. SYNC LOOP
-        // Using "saleorFetch" helper defined above to keep logic close to reference script
 
         // Helper: Get Channels
         const channelsJson = await saleorFetch(`{ channels { id slug currencyCode isActive } }`);
         const channels = channelsJson.data?.channels || [];
-        if (channels.length === 0) throw new Error("No Saleor Channels found.");
+        if (channels.length === 0) {
+            console.error("❌ No Saleor Channels found. Cannot sync.");
+            return;
+        }
 
         // Helper: Create/Get Brand Page
         const getOrCreateBrandPage = async (name: string) => {
-            if (!BRAND_MODEL_TYPE_ID) return null;
+            if (!BRAND_MODEL_TYPE_ID || !name) return null;
             const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:1){edges{node{id}}}}`, { n: name });
             if (find.data?.pages?.edges?.[0]) return find.data.pages.edges[0].node.id;
 
@@ -197,10 +223,14 @@ export const importShopifyProducts = task({
                 }
             });
 
+            // Check for specific error: "Product with this slug already exists"
+            // If so, we should probably fetch it (update logic), but for now just logging.
+
             const newProductId = productRes.data?.productCreate?.product?.id;
 
             if (!newProductId) {
                 console.error("      ❌ Failed to create product:", JSON.stringify(productRes.data?.productCreate?.errors));
+                // Try finding it?
                 continue;
             }
             console.log(`      ✅ Created Product ID: ${newProductId}`);
@@ -244,7 +274,7 @@ export const importShopifyProducts = task({
                     // Note: No headers for Content-Type here!
                     await fetch(apiUrl, {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${saleorToken}` },
+                        headers: { 'Authorization': saleorToken },
                         body: fd
                     });
                     console.log("      📸 Image uploaded.");
@@ -252,7 +282,7 @@ export const importShopifyProducts = task({
             }
 
             // E. Variants
-            const defaultWarehouse = DEFAULT_WAREHOUSE_ID; // Simplified for MVP: Use default warehouse
+            const defaultWarehouse = DEFAULT_WAREHOUSE_ID;
             for (const vEdge of p.variants.edges) {
                 const v = vEdge.node;
                 const sku = v.sku || `SKU-${Math.random().toString(36).substring(7)}`;

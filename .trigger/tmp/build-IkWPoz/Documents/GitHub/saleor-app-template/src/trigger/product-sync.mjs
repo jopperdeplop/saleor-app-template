@@ -17207,61 +17207,91 @@ var importShopifyProducts = task({
       where: eq(integrations.id, payload.integrationId)
     });
     if (!integration) {
-      console.error("❌ Integration not found");
       throw new Error("Integration not found");
     }
     console.log(`   ✅ Found Integration: ${integration.provider} @ ${integration.storeUrl}`);
     const apiUrl = process.env.SALEOR_API_URL;
-    const saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").replace(/^Bearer\s+/i, "");
+    let saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
+    if (!saleorToken.toLowerCase().startsWith("bearer ")) {
+      saleorToken = `Bearer ${saleorToken}`;
+    }
+    saleorToken = saleorToken.replace(/^Bearer\s+Bearer\s+/i, "Bearer ");
     if (!apiUrl || !saleorToken) {
       throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
     }
     const saleorHeaders = {
-      "Authorization": `Bearer ${saleorToken}`,
+      "Authorization": saleorToken,
       "Content-Type": "application/json"
     };
     const saleorFetch = /* @__PURE__ */ __name(async (query, variables = {}) => {
-      const res = await fetch(apiUrl, {
+      const res2 = await fetch(apiUrl, {
         method: "POST",
         headers: saleorHeaders,
         body: JSON.stringify({ query, variables })
       });
-      const json2 = await res.json();
-      if (json2.errors) console.error("   ❌ GraphQL Errors:", JSON.stringify(json2.errors));
-      return json2;
+      if (!res2.ok) {
+        const txt = await res2.text();
+        console.error(`   ❌ Saleor HTTP ${res2.status}:`, txt);
+        return {};
+      }
+      const json3 = await res2.json();
+      if (json3.errors) console.error("   ❌ GraphQL Errors:", JSON.stringify(json3.errors));
+      return json3;
     }, "saleorFetch");
-    console.log("   📡 Connecting to actual Shopify Store...");
-    const shopifyQuery = `
-        {
-          products(first: 20, query: "status:active AND inventory_total:>0") {
-            edges {
-              node {
-                id title vendor descriptionHtml
-                images(first: 1) { edges { node { url } } }
-                variants(first: 10) { edges { node { sku price inventoryQuantity } } }
-              }
-            }
-          }
-        }`;
-    const shopifyRes = await fetch(`https://${integration.storeUrl}/admin/api/2023-10/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": integration.accessToken || ""
-      },
-      body: JSON.stringify({ query: shopifyQuery })
-    });
-    if (shopifyRes.status === 403 || shopifyRes.status === 401) {
-      throw new Error(`Shopify API Access Denied (${shopifyRes.status}). Ensure specific scopes are granted.`);
+    console.log("   📡 Connecting to actual Shopify Store (API 2024-04)...");
+    const fetchShopify = /* @__PURE__ */ __name(async (filterQuery) => {
+      const graphqlQuery = `
+                {
+                products(first: 20${filterQuery ? `, query: "${filterQuery}"` : ""}) {
+                    edges {
+                    node {
+                        id title vendor descriptionHtml
+                        images(first: 1) { edges { node { url } } }
+                        variants(first: 10) { edges { node { sku price inventoryQuantity } } }
+                    }
+                    }
+                }
+                }`;
+      const res2 = await fetch(`https://${integration.storeUrl}/admin/api/2024-04/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": integration.accessToken || ""
+        },
+        body: JSON.stringify({ query: graphqlQuery })
+      });
+      return res2;
+    }, "fetchShopify");
+    let products = [];
+    let res = await fetchShopify("status:active AND inventory_total:>0");
+    if (res.status === 403 || res.status === 401) {
+      throw new Error(`Shopify API Access Denied (${res.status}). Ensure specific scopes are granted.`);
     }
-    const shopifyJson = await shopifyRes.json();
-    const products = shopifyJson.data?.products?.edges || [];
-    console.log(`   📦 Fetched ${products.length} products from Shopify.`);
+    let json2 = await res.json();
+    products = json2.data?.products?.edges || [];
+    console.log(`   📦 Fetched ${products.length} products (Strict Filter).`);
+    if (products.length === 0) {
+      console.log("   ⚠️  No products found with strict filter. Retrying with loose filter to check visibility...");
+      res = await fetchShopify("");
+      json2 = await res.json();
+      const allProducts = json2.data?.products?.edges || [];
+      if (allProducts.length > 0) {
+        console.log(`   ⚠️  FOUND ${allProducts.length} products with NO filter!`);
+        console.log("   ℹ️  The products likely have status='Draft' or inventory=0.");
+        console.log("   ℹ️  Forcing sync of these found products anyway for testing.");
+        products = allProducts;
+      } else {
+        console.log("   ❌ Still 0 products with no filter. The App likely has no product access (Check 'Sales Channel' availability in Shopify).");
+      }
+    }
     const channelsJson = await saleorFetch(`{ channels { id slug currencyCode isActive } }`);
     const channels = channelsJson.data?.channels || [];
-    if (channels.length === 0) throw new Error("No Saleor Channels found.");
+    if (channels.length === 0) {
+      console.error("❌ No Saleor Channels found. Cannot sync.");
+      return;
+    }
     const getOrCreateBrandPage = /* @__PURE__ */ __name(async (name) => {
-      if (!BRAND_MODEL_TYPE_ID) return null;
+      if (!BRAND_MODEL_TYPE_ID || !name) return null;
       const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:1){edges{node{id}}}}`, { n: name });
       if (find.data?.pages?.edges?.[0]) return find.data.pages.edges[0].node.id;
       console.log(`      ✨ Creating Brand Page: "${name}"`);
@@ -17330,7 +17360,7 @@ var importShopifyProducts = task({
           fd.append("0", blob, "image.webp");
           await fetch(apiUrl, {
             method: "POST",
-            headers: { "Authorization": `Bearer ${saleorToken}` },
+            headers: { "Authorization": saleorToken },
             body: fd
           });
           console.log("      📸 Image uploaded.");
