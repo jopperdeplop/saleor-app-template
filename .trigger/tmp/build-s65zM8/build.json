@@ -1,0 +1,126 @@
+{
+  "build": {
+  },
+  "cliPackageVersion": "4.3.0",
+  "config": {
+    "dirs": [
+      "./src/trigger"
+    ],
+    "project": "proj_kowucsyntkqmyhtllwkb"
+  },
+  "configPath": "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-s65zM8\\Documents\\GitHub\\saleor-app-template\\trigger.config.mjs",
+  "contentHash": "f2d25188f83e1288f12f0208831c3f8d",
+  "customConditions": [
+  ],
+  "deploy": {
+    "env": {
+    }
+  },
+  "environment": "dev",
+  "externals": [
+    {
+      "name": "bufferutil",
+      "version": "4.0.9"
+    },
+    {
+      "name": "import-in-the-middle",
+      "version": "1.11.0"
+    }
+  ],
+  "files": [
+    {
+      "entry": "src/trigger/orders.ts",
+      "out": "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-s65zM8\\Documents\\GitHub\\saleor-app-template\\src\\trigger\\orders.mjs"
+    },
+    {
+      "entry": "src/trigger/product-sync.ts",
+      "out": "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-s65zM8\\Documents\\GitHub\\saleor-app-template\\src\\trigger\\product-sync.mjs"
+    }
+  ],
+  "indexWorkerEntryPoint": "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-s65zM8\\AppData\\Local\\npm-cache\\_npx\\f51a09bd0abf5f10\\node_modules\\trigger.dev\\dist\\esm\\entryPoints\\dev-index-worker.mjs",
+  "otelImportHook": {
+    "include": [
+    ]
+  },
+  "outputHashes": {
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\AppData\\Local\\npm-cache\\_npx\\f51a09bd0abf5f10\\node_modules\\trigger.dev\\dist\\esm\\entryPoints\\dev-index-worker.mjs": "JK50MJCOJ3E",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\AppData\\Local\\npm-cache\\_npx\\f51a09bd0abf5f10\\node_modules\\trigger.dev\\dist\\esm\\entryPoints\\dev-index-worker.mjs.map": "pXqjQvLols8",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\AppData\\Local\\npm-cache\\_npx\\f51a09bd0abf5f10\\node_modules\\trigger.dev\\dist\\esm\\entryPoints\\dev-run-worker.mjs": "fUHRFADRJ48",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\AppData\\Local\\npm-cache\\_npx\\f51a09bd0abf5f10\\node_modules\\trigger.dev\\dist\\esm\\entryPoints\\dev-run-worker.mjs.map": "RHkWoIqqOKM",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\Documents\\GitHub\\saleor-app-template\\src\\trigger\\orders.mjs": "cL4lj73BPYY",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\Documents\\GitHub\\saleor-app-template\\src\\trigger\\orders.mjs.map": "/yVVcqlb67k",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\Documents\\GitHub\\saleor-app-template\\src\\trigger\\product-sync.mjs": "4DGP30gh5Rc",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\Documents\\GitHub\\saleor-app-template\\src\\trigger\\product-sync.mjs.map": "QNfCpiBo3dc",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\Documents\\GitHub\\saleor-app-template\\trigger.config.mjs": "D0zlgB4tABY",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\Documents\\GitHub\\saleor-app-template\\trigger.config.mjs.map": "bMRKiJu2jeM",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-6QNHNWKW.mjs": "4s58d5n+I7o",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-6QNHNWKW.mjs.map": "Y/+dsNc51PA",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-CEGEFIIW.mjs": "XTqnaKCt0CY",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-CEGEFIIW.mjs.map": "PUF4XWPqW4k",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-DEKBIM76.mjs": "/j6xJLK+gC4",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-DEKBIM76.mjs.map": "pwtlqW5LG6A",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-ERKBADS4.mjs": "hyl/gFwdnB0",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-ERKBADS4.mjs.map": "kRIu0fCS04U",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-GP7KGS2F.mjs": "m4FaQFdrkww",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-GP7KGS2F.mjs.map": "APa1kl8bXAU",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-L34HRTRG.mjs": "GxLLgWOY0Xs",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-L34HRTRG.mjs.map": "BoJpWMZQk4I",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-LX2TZGHD.mjs": "+hu3I7dxiJo",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-LX2TZGHD.mjs.map": "AanOmp7XrPU",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-ZQCCUGRB.mjs": "Ji8h79cPjPw",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\chunk-ZQCCUGRB.mjs.map": "jjmhEZWxCUk",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\crypto.node-SZRERSH4.mjs": "ufA+r6+wUSQ",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\crypto.node-SZRERSH4.mjs.map": "CR4+ROUCPXo",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\crypto.node-WHTE47BJ.mjs": "yFpJHD2UeEo",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\crypto.node-WHTE47BJ.mjs.map": "0b4tlwmkM3g",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\dist-A75EZBEA.mjs": "E96NOLRLkIo",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\dist-A75EZBEA.mjs.map": "pooBVLzxb+w",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\dist-X4KNWQHH.mjs": "zfhN2wY6HDo",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\dist-X4KNWQHH.mjs.map": "IeHwxfy50IE",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\esm-FBB3BYPS.mjs": "hVD49RBOaK0",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\esm-FBB3BYPS.mjs.map": "n/kSTyRRA5k",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\esm-JF62BALB.mjs": "1IHy9gNCHDc",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\esm-JF62BALB.mjs.map": "uuvelps5tsQ",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-bsd-XUQGEEFY.mjs": "9CrcUT6IJ7I",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-bsd-XUQGEEFY.mjs.map": "XvZilzXzAWQ",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-darwin-XV57M5WT.mjs": "FAgRQZuqaSM",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-darwin-XV57M5WT.mjs.map": "+l9HpwKMf8s",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-linux-2SZM4HHB.mjs": "cKtXPEL4BnA",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-linux-2SZM4HHB.mjs.map": "Gc9QJnrLqMA",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-unsupported-LFURNINP.mjs": "h1d6oMhR2VQ",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-unsupported-LFURNINP.mjs.map": "aOBtG4CZ894",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-win-C4YEF5E7.mjs": "iibmb9cH3Gw",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\getMachineId-win-C4YEF5E7.mjs.map": "RrzV8FonRfQ",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\multipart-parser-N2NMUDO3.mjs": "C6WAv3bftfA",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\multipart-parser-N2NMUDO3.mjs.map": "4lUCq2g2Oiw",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\s2s-ONUL5LQA.mjs": "NwK5HGkhW7Q",
+    "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-IkWPoz\\s2s-ONUL5LQA.mjs.map": "KbT+6DPFN8g"
+  },
+  "outputPath": "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-s65zM8",
+  "packageVersion": "4.3.0",
+  "runWorkerEntryPoint": "C:\\Users\\jopbr\\Documents\\GitHub\\saleor-app-template\\.trigger\\tmp\\build-s65zM8\\AppData\\Local\\npm-cache\\_npx\\f51a09bd0abf5f10\\node_modules\\trigger.dev\\dist\\esm\\entryPoints\\dev-run-worker.mjs",
+  "runtime": "node",
+  "sources": {
+    "package.json": {
+      "contentHash": "2763c5c84f854573088fd471793149af",
+      "contents": "eJyVVttu3DYQfc9XEIsCaYMldVs7G6MJ3Nh56EPtAikK9MUGTY0l2hLJkNR6G8P/XvAmaS9JW2CBBWfODGfOXMTnVwgtmBT3vFmcoedXCCG0MLQDqcezk7AWevonaMOlWJyhRUXKcuG1L68Qelk6NzUoEDUIxsFMzs4bKZsOsgYEaGr5BjDlzsVNTsoVKRbLiAu3ZlQpbOpHhyhIRfJ9fU8ZfcIDT4DJgdW8aUCTGjZZ9LDa8TAoY6lpMw01Nz6EglQnZD0B9Jcugy1rqWgA08G2EZXPvGxAM+gyJY1tNJiYSjGD1NKC2ATTt6Qk1ajQ/OvXDrDUfTRbnUwJCNhan9Upcf5GsawB34NlIZiKVKRMOg2UBZv1nAovxrXsD1Wm5UpJ76kkxckUtMvdi1ckJ762qaqby28UVlPVfukwkzU0IDJa17E1Zmztg1jHA2heuX0QF1ZLo4DZsd3y78BDd2JqbGToe2D7t4Ia15INPQiLHbuhU/7NyDDNlU3RrP4DFkvlW14K87/MxlJU5O3UPAcWDoYPqCpJeSSRI1lnTGqI15SHcwam48Ji1Q0NFzgIMVUq9fvUhOc+9CwxeVOsSfGOFFV+BDBr5JKckqLaw4wN7byU5PSYOjV2gEyMbriFB5PFiEdPqzkhTEtj8DidLo98fzofuY1JVsW0HAIfTrF28nxXjsMOxeMMV3OGdjFKg7UctL9kTU4PfCXOea86wLxXUltspA6eS1JM+cT6hmxOyfpAgy1t0rTP+HwwicQyJ/nUZA9GChznyUq82/c3bl9MhO/kUZL1lK81eOqGnLyba7axJrNL927ZucQV1UlPXBXzuRRbkwiltjUBVOxaho1QkJP5RgPRcDHfZCnWD+/L0q169HNZzVe+UH1QuyXv1MXOF0F9Sz/e2HEGwvg7fvz4+RJX+KKjgwH0y9UlurjAH//CK5L/tIhgYbGxtIF6CvENeX4wS+t+2yUzZtnXS1erF+czFQJh/KQdX8tDIw8M/YUwZpS1gDC+59spSkF7H+I069hCrzoaPS4UZY+0gd+ooE0ou0v93E1RGrGF0nxDfcmsHsCLQmlnfN8NvPOfCjctKJzSfLbAHkPbOYA1DGEs5Kee23FMwQ/vOMno6vry0+3173/8en31+f1rjLnw+/A18u4dPFr63RO727sYdIdaa5U5yzJNn0jDbTvcDQY0k8KCsITJPosLMf798CxUfxupuA0deBt0tzvPpJdkEScxfqZIPKIP6LhiHODwYILEM9KDQOkZBWfkTbaPPHMlm298z+HeZ+Oo0RPctVI+mjnzW0SyWLrxVnwIJtYkl2lBet79IT06LNWTJpzS7McZjdM6NqPz7eS9rIcu9t9men/GAXv5B9t/Bbo="
+    },
+    "src/trigger/orders.ts": {
+      "contentHash": "3632742e20eff9f8bf5b03900bfeb3f8",
+      "contents": "eJy1GttyG7f13TP+h+OtxyanFGjZyWSyKa0wJGXL1S28xE1VjQTtgiRGS2ADYKWwNN+St8ykM+1TJ5n0qW99b3+nP9B8QgfA3i9SmrZ80gIH537Dgegq5ELBBhSW17CFueArcD5Wgi4WRCCf3HSlf929eeF89PABTYBX+JpMcEC4GASUMNWBk/FwNL74dDYaf96Bt/3x6PXJbDJKFvZnh/sHh4dHo+PpxWA86k9HHZidDvvT0YU9eDSa9of9ab8Dk1F/PHhtD6b8INQN6FVXGpI7nqFZYGhB1GRJw5CyxRgrIjsQRsJbYkkO8RUJOuAJgpX92OfiRPhEVLBrBLyANuCLIbmKFh0wJw4pI+VTkaKBLBzCYZAHipnGYaihHj4gXxo4jzOpYEEYEViRhHnDIPSMNVqbhw8AAKjvgpMA7sgYcifQoE7HwoiIuYDlmnnQCvE64Nh3YQNcc33guyCVoGwB2zb0XkKMV/8sFzEYYYrOKRHQgxgHinc+yk4kKmld/vjDn76Cs6n1lHM4FdwjUmoyVr0ZQhceb0o0tpdto40EbbcLOzs70J9NX4+OpweD/vTg5FgvlXnFIZ0JraLQ0kOE3aBJ/3B0Mr7onx5czMaHOW7pHFqP7JE2qKXgt8DILYyE4KLlFI8BYTdwgwVQCStqJaEMplkoOBWeZ5KAWhLoh+FTCYpfE2YtPwulwnIJrTHxqWxXpIjUcogVhh7gW0y1WAFaENWKea2IkMC/ewfpBzL02nl76l9ZzMsBjwIfGFcwp8yHfqSWMLWscgGPN5bmFsGIyUikAmk9UCYVDgLiA2Y+/PqzREcSsCAgiUKXeV63DX7yB0NU297DSiOThkCBfMkhrJ5sqEOvknFiRXWgpIw6pzo8eXUwgNOT8XQ0hP3xyZF1+B0cKb7CinKGlLS+luOfpHEBvXKEfFSgMSaSBzcEnA8+dGDnJTjTF2+uf/ubA4SQU7JjjAdJhYWSb6latpyp04YnTyDdo8wLIp/IltNz2hXrZnoFgH9+9Y9//f1bgEPOr7W7RiEcDI1abQj+Io27LUJFU2U63oCPFe4A0d4C29Qlre7RFxER61Y+LXdgAyxaXenATlS0bSPFTwVfUUlaZTpadIO9nbHvaPa//wYmBAtvaV3VdWIuimbMWJ3ziGlzaIb3bHKSe4j4CyL30Nmz8z3EuE9qqJuDFV1W9fnd17BvaBwMddIyxxD1t9BKFWrXrPzbdkWn+pf5TYKgBLQFEkhyPzt//osxbymAecW2MBVrbX8stf0xW9/iddXc20KgFlx4F8E+Ud7S+k05Cq2HxMYeZs4Sr4zucpxCY7Axxexen9EWyzDfEwLffwP7mOoUpTjMjRDmrHvZybFX1kUlSdbjSAqXAUIrIiVekG1TzstV0yRnDDNPLed0s3hv9nas4xnja2dySrTrkKKkSej7viBSNmvQybzM0lliCYxDggCwxYBgcm1XkFNWpSAqEgw2ICNPV2QX5jiQpAOCYMmZC85xFaED2yY5ul14juCV4FEIVJGVhKs1fEaYzwW0PhGY+ZVyemN2j3AIPaO6Ixz+yrY8uc7t7Pxlwct0mmzZ84Fu7Pjcmgzpr6rOjHr1FrrBgmKm2pq4oiwqJ5w8T9DTvanlfl/wlWakpbHU5chHqRxoiWXLfrXbmXhIEhUvd+DsvIwjg1ukcO1HKIzkskJzWy22SY/pmy5UujqRnJ1DD87Oy2X1BUr6vdgyslavZwmvRqXnWsUpj3eH9Y8/fPu3fEtpqeh4tAjK7ULMVx/Bvk6Rb7EgSx5JUmeZ22TzmPskzVqpmdKzLS++3MSarDVziiyONegV8e+h2ONhD1Y4tD1MDDvlpu/nrcKJ5EAbXGBRENTJOSRzHAUKZpNMVKN4RaQyjes8SxnQComAUJAbyiPb04nI031PvjHNRIrpa3fNS5MI+O5dXeFieEVccI4wZRlLyfUk/5NKEKJ2XXCe774PgwCvFWcgVR2sR9XaBWeCGewLzDwqPV6PEytNfdCv2/09DV1wPnxvd/eDWiI8YkpoOrOJU9ze1un+E+37JNQN8Km9Jt2hxCk3zWuD3euzdV1mSNHd3cQ49jtO6VnfsMJhNadXMnnMfV1O29Y3ZCEWHgm005sIRysctkyqMcnD3DZbdfwStlBL7QLvOx24pX72sSR0sVTJl0+lwswjM0b1mreqM+BtfCSfnPeQXd1DNziIyB5SfGIKQqutHdjZrUO0wlJaSq16XBGjSqM65LdEDLBuWwy264VTiqRtuzY/DRAMIqn4SpZyH1Hg2Y0h8QIszLUEehAxn8wpI+UOUjtFLk5R7MTwqNfLXC9ZrfWZ+IJliR6YOvsfWlH/fCI9QUPNbdkAoeB+5Kk9pFODUVM/1FET1Kle/76IMFMm4g2i5LMBmhH19n9l+P/a+A04DQv9lbaCC87uM/TsWRN5AzqIhCDMs7lo2ATKBV1QNmhOW9DggPpX62UNxtW5gDAlp+vQ5PbRePC6fzw8mIyaWGOcDUlAb4hYn8RO4YxH09n4uOmER4Si87ULSkTkbpgJXTDdkzv7UTCnQbDSo4EjzPCCiCb0lHlcEbFywRkOZ01QhASnc093qiej0cHFi2cXLz64wI04dbC4hdCp0f99CVRX8eTWZWaW8ARO46ElmA7sjvbIdEh//Cu8si2bzup2dJjd/atX/5ouQjsBATNKNOMlykB6PCTV7JTCmJyg++y61kSnoLp8nxJI74jVeWxTikmHmLZa2pt3g2lyKfFuiClv2I8rWpMnVqKnATAptkdELbl/bJqjYrW3O3F27HbhFEtpRm+RJOKpBEkCYpq0utiuzBM8rP1IT1ninH3fbCEZv5hGJB6/XJp7fXLNrRkfVGtQZtknT4qNby0L3S6MEOTit6kumUJ0wMJIFapScFct4slNTztLgKjfZBvFvWvpwtkmX3KyepPJ4RZFQtSH7XlTrq0XZG5lTUS5i/XEQxoZN3pwc7ppgFMCe3oeeBwP6VIjoeJOYxLX2db2Kfq4zsz3Jzj9K8x/VpEyEdKqe/3ZANUCuEX9VCZCVRKlS6q93DZoNb59/l+UZMBnIsgfTNaakgcWghZJxUs/JcSbpyXvIZiFPlYEjojCelRXHAqVVWa7b3gJzyoxan12RRROHLZ82PaGHaCNbeE1WbtwaV/TLoyoF483dHvxeBMgaxEkSBhgj7S6v5O/7C468PTiaXt7WaM20xW58GZycozsQIfO162gttnOr6QSxP5hmXIKTEUicDoJhZKYZ8/OU2taW9TpSRCpL+G9Br9veOHMDUF1qCeBkCn9nijQJrWUEamdj0Jlwvf9N6lrJK5yTNQtF9fdVwKHy08P0/l7AXP92DrHgB3ERwZlQmHPHpZ7dznaT+Jx4i3JCtviJHPMaZgS0ZhmA8f3Ev/u6+SdD97wKxjwVRgQPVIoseTDxA4551EQrKs36KYorc5ITbtrM4GsuF+aXLedhw9i90sfswb9w8PPYTI4OR0N4fXo8HQ0nkBrwENKfOA3eqYcv2XNI2Y6iIYRpJvNRtvpE3Hy6Fyedubuc1gpQa8ipYeksWDOjF0zfsucmG8bH1d6WNtXSsQ1PMGVoMphQvplo5UpDOvsgjMAJINoAb1eDxyDNb7xJPqP2UgJxrc/ad+EkvtnjkljHftgXtVSeQJoWqpkDGh7Oautdl5d2bblM6GWKinumCHuqAWR9U8mlX+f2IA0r2QuXCbzT01mmw3aLusfUzQZZoecgsg4WtOWpvnpzFiflZu4n8NwTimNzz0/h8Ntwe7xxrbg9I1TN30FKHbJ6YitzlZJ7OYYNi5w+Xijj6A5FVJZe8QrAY4XLpESdGXnBGbH46sQs7XezFW7eNW9CyYdmxoY+xULtlsBe14H9jxP0fS8llxxxBKPUmNOzIihLwjOQZhxqtkPuf7vgAH3i8LEc4k8CuQVgcIlZwkV83duj6wwDVxwAr6gUlFPfky+xDofa83Ecb+11v43U/ppwQ=="
+    },
+    "src/trigger/product-sync.ts": {
+      "contentHash": "7326464ad6ce3fbdedcd70c1f2526551",
+      "contents": "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"
+    },
+    "trigger.config.ts": {
+      "contentHash": "0f25f7516a23feba9f9da197b6c8f0fe",
+      "contents": "eJxlT01Pg0AQvZPwHyZ70qQpGG7bi0YvJnrzZoyp7EBH2F06O9A2Df/dUMBQPc3kzfuYR7bxLHAGgwU5fPSuoBJ6KNhbUPfCVJbIa4NdEkyVdJnaxFEc4fEiM1hs21quxDfnOAIAaNh/Yy4a1LB9Vv7Q5uHkpNrb007q+lB9qdVINcRBw7taJ4HzZMpUH9OVWydkUYNy3uCsqX35gh3WGlTtyxlNErDb41PLWyHvgAIw7ltiNEAOugzysaCcGgwDFLxF6JADeRdGj4WBhixN5zdQmDBomPpdHh/7X2GTxYMI2kaChmz150jujSz6Vp7da9Bwl/5mLPT/KEtOP+3D7G83cfQDw7mD1g=="
+    },
+    "tsconfig.json": {
+      "contentHash": "4603bf9d7abfc016163be517b16a1da2",
+      "contents": "eJxtUVtrgzAUfhf2H0IepbXvfRqUDVrWDQZ7GmXE+M2mxkSSYyeU/vcRL6vaPcl39ZyTS8QYl7aslIZ7q0hZ4/maXSLGGOMkXA7ia8bhDRrii47XKuVr9tkCxnhmy17pQKIITqQaN7bPt/DQtwit7c8u/I5cjZ70hapeVLo5QhYzhZySNOW+rZPYWOOVJxjaCK9MvjXPSuNVlJh1G/tUqlkD/N5mtcbWEJytpmLZSvf7d/w7vNV1OFlwpLXJNNxgcUE8Y+et2Q8to2blrRaErNNmc558ExodhKRlAEPISIcShoSeBlLh8eECyZPBXAk63p6SMf64ikePFg7q5CrmPT4sbr4cBi5MN0+MhX9ylZCFyJGcfHuSUXCiDMn2e40Yu4aOsJ2uM/wFebj4EuacZAn5Ya04XsX3sAml7SgczbzGZvgq+zsHW3R9iH4BJMPLtQ=="
+    }
+  },
+  "target": "dev"
+}

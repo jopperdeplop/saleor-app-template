@@ -1,142 +1,295 @@
 
 import { task } from "@trigger.dev/sdk/v3";
 import { db } from "../db";
-
 import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { makeSaleorClient, PRODUCT_CREATE, PRODUCT_VARIANT_CREATE, PRODUCT_TYPE_QUERY } from "../lib/saleor-client";
 
+// --- CONFIGURATION FROM ENV ---
+const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
+const BRAND_ATTRIBUTE_ID = process.env.SALEOR_BRAND_ATTRIBUTE_ID;
+const PRODUCT_TYPE_ID = process.env.SALEOR_PRODUCT_TYPE_ID;
+const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID;
+const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID;
+const PHOTOROOM_API_KEY = process.env.PHOTOROOM_API_KEY;
+
+const DEFAULT_VENDOR_ADDRESS = {
+    firstName: "Logistics",
+    lastName: "Manager",
+    companyName: "Vendor Warehouse",
+    streetAddress1: "123 Market St",
+    city: "San Francisco",
+    postalCode: "94105",
+    country: "US",
+    countryArea: "CA"
+};
+
+// --- HELPERS ---
+
+function textToEditorJs(text: string) {
+    const cleanText = text ? text.replace(/\n/g, "<br>") : "";
+    return JSON.stringify({
+        time: Date.now(),
+        blocks: [{ type: "paragraph", data: { text: cleanText } }],
+        version: "2.25.0"
+    });
+}
+
+async function processImageWithPhotoroom(imageUrl: string): Promise<Blob | null> {
+    if (!PHOTOROOM_API_KEY) return null;
+
+    try {
+        console.log("      🎨 Processing with Photoroom...");
+        const shopifyRes = await fetch(imageUrl);
+        if (!shopifyRes.ok) return null;
+        const originalBlob = await shopifyRes.blob();
+
+        const formData = new FormData();
+        formData.append("image_file", originalBlob, "original.jpg");
+        formData.append("background.color", "FFFFFF");
+        formData.append("format", "webp");
+
+        const res = await fetch("https://sdk.photoroom.com/v1/segment", {
+            method: "POST",
+            headers: { "x-api-key": PHOTOROOM_API_KEY },
+            body: formData
+        });
+
+        if (!res.ok) {
+            console.error(`      ❌ Photoroom Error: ${res.status}`);
+            return null;
+        }
+        return await res.blob();
+    } catch (e) {
+        console.error("      ❌ Photoroom Exception:", e);
+        return null;
+    }
+}
+
+// --- TASK DEFINITION ---
+
 export const importShopifyProducts = task({
     id: "import-shopify-products",
-    run: async (payload: { integrationId: number, dryRun?: boolean }) => {
-        console.log(`🚀 Starting Product Sync for Integration ID: ${payload.integrationId}`);
+    run: async (payload: { integrationId: number }) => {
+        console.log(`🚀 Starting Robust Product Sync for Integration ID: ${payload.integrationId}`);
 
-        // 1. Fetch Integration Config
+        // 1. Fetch Integration
         const integration = await db.query.integrations.findFirst({
             where: eq(integrations.id, payload.integrationId)
         });
 
         if (!integration) {
-            throw new Error(`Integration ${payload.integrationId} not found in DB.`);
+            console.error("❌ Integration not found");
+            throw new Error("Integration not found");
         }
 
         console.log(`   ✅ Found Integration: ${integration.provider} @ ${integration.storeUrl}`);
-        console.log(`   🔑 Access Token: ${integration.accessToken.substring(0, 5)}...`);
 
-        // 2. Fetch Products from Shopify (Mock vs Real)
-        // Since we likely don't have a real valid token for localhost testing without a real shopify app, 
-        // we will simulate the fetch if the token looks "mock-like" or if it fails.
+        // 2. Setup Saleor Client
+        const apiUrl = process.env.SALEOR_API_URL;
+        const saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").replace(/^Bearer\s+/i, "");
 
-        let shopifyProducts = [];
-        const shopifyUrl = `https://${integration.storeUrl}/admin/api/2024-01/products.json?limit=10`;
+        if (!apiUrl || !saleorToken) {
+            throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
+        }
 
-        try {
-            const response = await fetch(shopifyUrl, {
-                headers: {
-                    'X-Shopify-Access-Token': integration.accessToken,
-                    'Content-Type': 'application/json'
+        // Helper wrapper for Saleor Requests using urql client is possible, but for File Uploads and dynamic queries
+        // logic from reference script used fetch. We will use the structured makeSaleorClient for standard ops,
+        // and raw fetch for uploads/complex logic if needed, or stick to the client.
+        // Let's stick to the REFERENCE SCRIPT style for stability as requested.
+
+        const saleorHeaders = {
+            'Authorization': `Bearer ${saleorToken}`,
+            'Content-Type': 'application/json'
+        };
+
+        const saleorFetch = async (query: string, variables: any = {}) => {
+            const res = await fetch(apiUrl, {
+                method: 'POST',
+                headers: saleorHeaders,
+                body: JSON.stringify({ query, variables })
+            });
+            const json: any = await res.json();
+            if (json.errors) console.error("   ❌ GraphQL Errors:", JSON.stringify(json.errors));
+            return json;
+        };
+
+        // 3. Fetch Shopify Products
+        console.log("   📡 Connecting to actual Shopify Store...");
+        const shopifyQuery = `
+        {
+          products(first: 20, query: "status:active AND inventory_total:>0") {
+            edges {
+              node {
+                id title vendor descriptionHtml
+                images(first: 1) { edges { node { url } } }
+                variants(first: 10) { edges { node { sku price inventoryQuantity } } }
+              }
+            }
+          }
+        }`;
+
+        const shopifyRes = await fetch(`https://${integration.storeUrl}/admin/api/2023-10/graphql.json`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': integration.accessToken || ""
+            },
+            body: JSON.stringify({ query: shopifyQuery })
+        });
+
+        if (shopifyRes.status === 403 || shopifyRes.status === 401) {
+            throw new Error(`Shopify API Access Denied (${shopifyRes.status}). Ensure specific scopes are granted.`);
+        }
+
+        const shopifyJson: any = await shopifyRes.json();
+        const products = shopifyJson.data?.products?.edges || [];
+        console.log(`   📦 Fetched ${products.length} products from Shopify.`);
+
+        // 4. SYNC LOOP
+        // Using "saleorFetch" helper defined above to keep logic close to reference script
+
+        // Helper: Get Channels
+        const channelsJson = await saleorFetch(`{ channels { id slug currencyCode isActive } }`);
+        const channels = channelsJson.data?.channels || [];
+        if (channels.length === 0) throw new Error("No Saleor Channels found.");
+
+        // Helper: Create/Get Brand Page
+        const getOrCreateBrandPage = async (name: string) => {
+            if (!BRAND_MODEL_TYPE_ID) return null;
+            const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:1){edges{node{id}}}}`, { n: name });
+            if (find.data?.pages?.edges?.[0]) return find.data.pages.edges[0].node.id;
+
+            console.log(`      ✨ Creating Brand Page: "${name}"`);
+            const create = await saleorFetch(`mutation Create($n:String!,$t:ID!){pageCreate(input:{title:$n,pageType:$t,isPublished:true,content:"{}"}){page{id}}}`, { n: name, t: BRAND_MODEL_TYPE_ID });
+            return create.data?.pageCreate?.page?.id;
+        };
+
+        // Loop through products
+        for (const edge of products) {
+            const p = edge.node;
+            console.log(`\n   🔄 Processing: ${p.title}`);
+
+            // A. Vendor/Brand
+            const brandId = await getOrCreateBrandPage(p.vendor);
+            const attributesInput = [];
+            if (brandId && BRAND_ATTRIBUTE_ID) {
+                attributesInput.push({ id: BRAND_ATTRIBUTE_ID, reference: brandId });
+            }
+
+            // B. Create Product
+            const desc = textToEditorJs(p.descriptionHtml || p.title);
+            const createQuery = `
+            mutation CreateProduct($input: ProductCreateInput!) {
+                productCreate(input: $input) {
+                    product { id }
+                    errors { field message }
+                }
+            }`;
+
+            const productRes = await saleorFetch(createQuery, {
+                input: {
+                    name: p.title,
+                    productType: PRODUCT_TYPE_ID,
+                    category: CATEGORY_ID,
+                    description: desc,
+                    attributes: attributesInput
                 }
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                shopifyProducts = data.products;
-                console.log(`   📦 Fetched ${shopifyProducts.length} products from Shopify API.`);
-            } else {
-                console.log(`   ⚠️ Shopify API returned ${response.status}: ${response.statusText}. Using Mock Data.`);
-                // Pass through to catch block logic or just mock here
-                throw new Error("API Failed");
+            const newProductId = productRes.data?.productCreate?.product?.id;
+
+            if (!newProductId) {
+                console.error("      ❌ Failed to create product:", JSON.stringify(productRes.data?.productCreate?.errors));
+                continue;
             }
-        } catch (error) {
-            console.log("   ⚠️ Network/Auth Error with Shopify. Switching to Simulation Mode.");
-            shopifyProducts = [
-                { id: 123, title: "Mock T-Shirt", vendor: "Nike", variants: [{ price: "19.99", sku: "NIKE-TSHIRT" }] },
-                { id: 456, title: "Mock Sneakers", vendor: "Adidas", variants: [{ price: "89.99", sku: "ADI-SNEAKER" }] }
-            ];
-        }
+            console.log(`      ✅ Created Product ID: ${newProductId}`);
 
-        // 3. Sync to Saleor
-        console.log("   🔄 Syncing to Saleor...");
+            // C. Channel Listings
+            const dateStr = new Date().toISOString().split('T')[0];
+            const channelListings = channels.map((ch: any) => ({
+                channelId: ch.id,
+                isPublished: true,
+                publicationDate: dateStr,
+                isAvailableForPurchase: true,
+                visibleInListings: true
+            }));
+            await saleorFetch(`mutation Upd($id:ID!,$in:ProductChannelListingUpdateInput!){productChannelListingUpdate(id:$id,input:$in){errors{field}}}`, {
+                id: newProductId,
+                input: { updateChannels: channelListings }
+            });
 
-        const apiUrl = process.env.SALEOR_API_URL;
-        const rawToken = process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "";
-        // If token already has "Bearer ", strip it. makeSaleorClient will add it back.
-        const token = rawToken.replace(/^Bearer\s+/i, "");
+            // D. Image Processing
+            const imgUrl = p.images?.edges?.[0]?.node?.url;
+            if (imgUrl) {
+                let blob = await processImageWithPhotoroom(imgUrl);
+                if (!blob) {
+                    // Fallback to original
+                    const fallbackRes = await fetch(imgUrl);
+                    if (fallbackRes.ok) blob = await fallbackRes.blob();
+                }
 
-        if (!apiUrl || !token) {
-            throw new Error("Missing SALEOR_API_URL or SALEOR_APP_TOKEN/SALEOR_TOKEN");
-        }
+                if (blob) {
+                    // Upload
+                    console.log("      ⬆️ Uploading image...");
+                    const fd = new FormData();
+                    fd.append("operations", JSON.stringify({
+                        query: `mutation($product:ID!,$image:Upload!){productMediaCreate(input:{product:$product,image:$image}){media{id} errors{message}}}`,
+                        variables: { product: newProductId, image: null }
+                    }));
+                    fd.append("map", JSON.stringify({ "0": ["variables.image"] }));
+                    fd.append("0", blob, "image.webp");
 
-        const client = makeSaleorClient(apiUrl, token);
-
-        // 3a. Get Product Type
-        let productTypeId = process.env.SALEOR_PRODUCT_TYPE_ID;
-
-        if (!productTypeId) {
-            console.log("   ⚠️ SALEOR_PRODUCT_TYPE_ID not set. Fetching first available...");
-            const { data: typeData, error: typeError } = await client.query(PRODUCT_TYPE_QUERY, {}).toPromise();
-            if (typeError || !typeData?.productTypes?.edges?.length) {
-                console.error("No Product Type found", typeError);
-                throw new Error("Could not find a default Product Type to use for sync.");
+                    // Native fetch for multipart
+                    // Note: No headers for Content-Type here!
+                    await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${saleorToken}` },
+                        body: fd
+                    });
+                    console.log("      📸 Image uploaded.");
+                }
             }
-            productTypeId = typeData.productTypes.edges[0].node.id;
-        }
-        console.log(`   📝 Using Product Type ID: ${productTypeId}`);
 
-        for (const product of shopifyProducts) {
-            if (payload.dryRun) {
-                console.log(`      [DRY RUN] Would create product: ${product.title} (Vendor: ${product.vendor})`);
-            } else {
-                console.log(`      🚀 Creating Product: ${product.title}...`);
+            // E. Variants
+            const defaultWarehouse = DEFAULT_WAREHOUSE_ID; // Simplified for MVP: Use default warehouse
+            for (const vEdge of p.variants.edges) {
+                const v = vEdge.node;
+                const sku = v.sku || `SKU-${Math.random().toString(36).substring(7)}`;
+                const price = parseFloat(v.price);
 
-                // Create Product
-                const { data: pData, error: pError } = await client.mutation(PRODUCT_CREATE, {
+                const varRes = await saleorFetch(`mutation CreateVar($input: ProductVariantCreateInput!) {
+                    productVariantCreate(input: $input) { productVariant { id } errors { field message } }
+                 }`, {
                     input: {
-                        name: product.title,
-                        description: JSON.stringify({
-                            time: Date.now(),
-                            blocks: [{ type: "paragraph", data: { text: product.body_html || product.title || "" } }],
-                            version: "2.25.0"
-                        }),
-                        productType: productTypeId,
-                        attributes: []
+                        product: newProductId,
+                        sku: sku,
+                        attributes: [],
+                        trackInventory: true,
+                        stocks: defaultWarehouse ? [{ warehouse: defaultWarehouse, quantity: v.inventoryQuantity }] : []
                     }
-                }).toPromise();
+                });
 
-                if (pError) {
-                    console.error(`      ❌ Saleor API Error: ${pError.message}`);
-                    continue;
-                }
-                if (pData?.productCreate?.errors?.length > 0) {
-                    console.error(`      ❌ Saleor Schema Error: ${JSON.stringify(pData.productCreate.errors)}`);
-                    continue;
-                }
-
-                const newProductId = pData?.productCreate?.product?.id;
-                console.log(`      ✅ Created Product ID: ${newProductId} (${pData?.productCreate?.product?.name})`);
-
-                // Create Variants
-                for (const variant of product.variants) {
-                    const { data: vData, error: vError } = await client.mutation(PRODUCT_VARIANT_CREATE, {
-                        input: {
-                            product: newProductId,
-                            sku: variant.sku || `SKU-${Math.random().toString(36).substring(7)}`,
-                            trackInventory: true,
-                            attributes: []
-                        }
-                    }).toPromise();
-
-                    if (vError) console.error("      ❌ Variant Error:", vError);
-                    else if (vData.productVariantCreate.errors.length > 0) console.error("      ❌ Variant Schema Error:", vData.productVariantCreate.errors);
-                    else console.log(`         - Created Variant: ${vData.productVariantCreate.productVariant.sku}`);
+                const varId = varRes.data?.productVariantCreate?.productVariant?.id;
+                if (varId) {
+                    // Price Listing
+                    const priceListings = channels.map((ch: any) => ({
+                        channelId: ch.id,
+                        price: price,
+                        costPrice: price
+                    }));
+                    await saleorFetch(`mutation UpdPrice($id:ID!,$in:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$in){errors{field}}}`, {
+                        id: varId,
+                        input: priceListings
+                    });
+                    console.log(`      ✅ Variant ${sku} created.`);
+                } else {
+                    console.error("      ❌ Variant failed:", JSON.stringify(varRes.data?.productVariantCreate?.errors));
                 }
             }
+
         }
 
-        return {
-            success: true,
-            syncedCount: shopifyProducts.length,
-            message: "Sync completed successfully"
-        };
+        console.log("✅ Sync Complete");
     },
 });
