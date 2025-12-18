@@ -6,7 +6,7 @@ import { logDebug } from "../lib/utils";
 
 export const diagnoseShopifyIntegration = task({
     id: "diagnose-shopify-integration",
-    run: async (payload: { storeUrl: string, repair?: boolean }) => {
+    run: async (payload: { storeUrl: string, repair?: boolean, forceUrl?: string }) => {
         logDebug(`🔍 Running Diagnostics for Shopify Store: ${payload.storeUrl}`);
 
         // 1. Fetch Integration from DB
@@ -20,9 +20,20 @@ export const diagnoseShopifyIntegration = task({
         }
 
         const { accessToken, storeUrl } = integration[0];
-        const appUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://partner.salp.shop");
+
+        // ENV VAR DEBUG
+        const envAppUrl = process.env.APP_URL;
+        const envVercelUrl = process.env.VERCEL_URL;
+
+        // Final URL selection
+        const appUrl = payload.forceUrl || envAppUrl || (envVercelUrl ? `https://${envVercelUrl}` : "https://partner.salp.shop");
         const webhookUrl = `${appUrl}/api/webhooks/shopify-fulfillment`;
         const topic = "fulfillments/create";
+
+        logDebug(`   💡 Diagnostic Info:`);
+        logDebug(`      - APP_URL env: ${envAppUrl || "NOT SET"}`);
+        logDebug(`      - VERCEL_URL env: ${envVercelUrl || "NOT SET"}`);
+        logDebug(`      - Target URL: ${webhookUrl}`);
 
         // 2. Fetch Webhooks from Shopify
         try {
@@ -40,37 +51,55 @@ export const diagnoseShopifyIntegration = task({
 
             let fulfillmentWebhooks = webhooks.filter((w: any) => w.topic === topic);
 
-            // 3. REPAIR MODE: Register if missing
-            if (payload.repair && fulfillmentWebhooks.length === 0) {
-                logDebug(`   🛠️ Repair Mode Active: Registering webhook to ${webhookUrl}`);
-                const regRes = await fetch(`https://${storeUrl}/admin/api/2024-04/webhooks.json`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Shopify-Access-Token': accessToken
-                    },
-                    body: JSON.stringify({
-                        webhook: {
-                            topic: topic,
-                            address: webhookUrl,
-                            format: "json",
-                            fields: ["order_id", "tracking_number", "tracking_urls"]
-                        }
-                    })
-                });
+            // 3. REPAIR MODE: Register or UPDATE if incorrect
+            if (payload.repair) {
+                const needsRepair = fulfillmentWebhooks.length === 0 || fulfillmentWebhooks.some(w => w.address !== webhookUrl);
 
-                const regJson: any = await regRes.json();
-                if (regRes.ok) {
-                    logDebug(`   ✅ Successfully registered webhook.`);
-                    // Refresh the list for the final report
-                    return {
-                        status: "repaired",
-                        registeredUrl: webhookUrl,
-                        shopifyResponse: regJson
-                    };
+                if (needsRepair) {
+                    logDebug(`   🛠️ Repair Mode: Fixing webhooks for ${webhookUrl}...`);
+
+                    // Cleanup old ones first if topic exists but URL is wrong
+                    for (const w of fulfillmentWebhooks) {
+                        if (w.address !== webhookUrl) {
+                            logDebug(`      🗑️ Removing incorrect webhook: ${w.address}`);
+                            await fetch(`https://${storeUrl}/admin/api/2024-04/webhooks/${w.id}.json`, {
+                                method: 'DELETE',
+                                headers: { 'X-Shopify-Access-Token': accessToken }
+                            });
+                        }
+                    }
+
+                    // Register new
+                    const regRes = await fetch(`https://${storeUrl}/admin/api/2024-04/webhooks.json`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Shopify-Access-Token': accessToken
+                        },
+                        body: JSON.stringify({
+                            webhook: {
+                                topic: topic,
+                                address: webhookUrl,
+                                format: "json",
+                                fields: ["order_id", "tracking_number", "tracking_urls"]
+                            }
+                        })
+                    });
+
+                    const regJson: any = await regRes.json();
+                    if (regRes.ok) {
+                        logDebug(`   ✅ Successfully registered webhook to: ${webhookUrl}`);
+                        return {
+                            status: "repaired",
+                            finalUrl: webhookUrl,
+                            details: "Existing incorrect webhooks were removed and replaced."
+                        };
+                    } else {
+                        logDebug(`   ❌ Registration Failed:`, JSON.stringify(regJson));
+                        return { status: "failed", error: regJson, suggestedAppUrl: appUrl };
+                    }
                 } else {
-                    logDebug(`   ❌ Failed to register webhook:`, JSON.stringify(regJson));
-                    return { status: "failed", error: regJson };
+                    logDebug(`   ✨ Webhook is already correctly pointing to: ${webhookUrl}`);
                 }
             }
 
@@ -82,14 +111,18 @@ export const diagnoseShopifyIntegration = task({
                     address: w.address,
                     topic: w.topic
                 })),
-                allTopics: webhooks.map((w: any) => w.topic),
-                currentAppUrlEnv: process.env.APP_URL || "NOT SET",
-                currentVercelUrlEnv: process.env.VERCEL_URL || "NOT SET",
-                targetWebhookUrl: webhookUrl
+                currentEnvironment: {
+                    APP_URL: envAppUrl || "MISSING",
+                    VERCEL_URL: envVercelUrl || "MISSING",
+                    RESOLVED_URL: appUrl
+                },
+                recommendation: fulfillmentWebhooks.some(w => w.address.includes('partner.salp.shop'))
+                    ? "Your webhook is currently pointing to the WRONG domain. Run with repair:true and ensure forceUrl is set or APP_URL is fixed."
+                    : "Looks good if the RESOLVED_URL matches your Vercel address."
             };
 
         } catch (e: any) {
-            logDebug(`   ❌ Error fetching webhooks: ${e.message}`);
+            logDebug(`   ❌ Error: ${e.message}`);
             return { error: e.message };
         }
     }
