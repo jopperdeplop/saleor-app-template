@@ -145,10 +145,10 @@ export const shopifyFulfillmentSync = task({
             const errorMsg = JSON.stringify(fulfillRes.data.orderFulfill.errors);
             logDebug(`   ❌ Saleor Logic Error:`, errorMsg);
             throw new Error(`Saleor Fulfillment Failed: ${errorMsg}`);
-        } else if (fulfillRes.data?.orderFulfill?.fulfillment) {
-            logDebug(`   🎉 Saleor Order #${saleorOrder.number} marked as Fulfilled! ID: ${fulfillRes.data.orderFulfill.fulfillment.id}`);
+        } else if (fulfillRes.data?.orderFulfill?.fulfillments?.length > 0) {
+            logDebug(`   🎉 Saleor Order #${saleorOrder.number} marked as Fulfilled! ID: ${fulfillRes.data.orderFulfill.fulfillments[0].id}`);
         } else {
-            throw new Error("Mutation success but no fulfillment object returned?");
+            throw new Error("Mutation success but no fulfillments returned?");
         }
 
         return { success: true, orderNumber: saleorOrder.number };
