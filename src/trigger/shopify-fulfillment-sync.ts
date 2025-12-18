@@ -56,6 +56,11 @@ export const shopifyFulfillmentSync = task({
                       lines {
                         id
                         quantity
+                        productName
+                        allocations {
+                          quantity
+                          warehouse { id }
+                        }
                       }
                     }
                   }
@@ -80,6 +85,11 @@ export const shopifyFulfillmentSync = task({
                                 lines {
                                     id
                                     quantity
+                                    productName
+                                    allocations {
+                                      quantity
+                                      warehouse { id }
+                                    }
                                 }
                             }
                         }
@@ -99,37 +109,63 @@ export const shopifyFulfillmentSync = task({
 
         logDebug(`   ✅ Found Saleor Order: #${saleorOrder.number} (${saleorOrder.id})`);
 
-        // 5. Determine Default Warehouse (Fallback)
+        // 5. Determine Warehouses (Default & Vendor)
         let defaultWarehouseId = process.env.SALEOR_WAREHOUSE_ID;
+        let vendorWarehouseId: string | null = null;
+
+        // A. Fetch Default if needed
         if (!defaultWarehouseId) {
             const warehouseRes = await client.query(WAREHOUSE_QUERY, { search: "" }).toPromise();
             defaultWarehouseId = warehouseRes.data?.warehouses?.edges?.[0]?.node?.id;
-            if (defaultWarehouseId) {
-                logDebug(`   🏢 Found Default Warehouse: ${defaultWarehouseId}`);
+            if (defaultWarehouseId) logDebug(`   🏢 Found Default Warehouse: ${defaultWarehouseId}`);
+        }
+
+        // B. Fetch Vendor Warehouse (Best Effort)
+        if (brandName) {
+            const vendorSlug = `vendor-${slugify(brandName)}`;
+            logDebug(`   🏭 Looking for Vendor Warehouse with slug: ${vendorSlug}`);
+            // We use a custom query to filter by slug specifically if possible, or search
+            const { data: whData } = await client.query(`
+                query FindWarehouseBySlug($slug: String) {
+                    warehouses(filter: { slug: [$slug] }, first: 1) {
+                        edges { node { id name } }
+                    }
+                }
+            `, { slug: vendorSlug }).toPromise();
+
+            vendorWarehouseId = whData?.warehouses?.edges?.[0]?.node?.id;
+            if (vendorWarehouseId) {
+                logDebug(`   ✅ Found Vendor Warehouse: ${whData.warehouses.edges[0].node.name} (${vendorWarehouseId})`);
             } else {
-                logDebug(`   ⚠️ No default warehouse found. Expecting explicit allocations.`);
+                logDebug(`   ⚠️ Vendor Warehouse not found. Will rely on Allocations or Default.`);
             }
         }
 
         // 6. Execute Saleor Fulfillment
-        // We fulfill all lines assigned to this Shopify Order
         const linesToFulfill = saleorOrder.lines.map((l: any) => {
-            // Find the warehouse where this line is allocated
-            // If explicit environment var is set, use it (override)
-            // Otherwise, use the allocation's warehouse
-            let targetWarehouse = process.env.SALEOR_WAREHOUSE_ID;
+            let targetWarehouse = process.env.SALEOR_WAREHOUSE_ID; // 1. Env Override
+            let source = "ENV";
 
-            if (!targetWarehouse && l.allocations?.length > 0) {
+            if (!targetWarehouse && vendorWarehouseId) {
+                // 2. Vendor Warehouse (Pattern Matching) - Prioritize this if no Env set
+                // This covers "Zero Touch" where allocation might not exist yet
+                targetWarehouse = vendorWarehouseId;
+                source = "VENDOR_MATCH";
+            } else if (!targetWarehouse && l.allocations?.length > 0) {
+                // 3. Exact Allocation (Fallback if Vendor WH mismatch or specific stock used)
                 targetWarehouse = l.allocations[0].warehouse.id;
+                source = "ALLOCATION";
             } else if (!targetWarehouse) {
-                // Fallback if no allocation and no env var (rare, but handle safely)
-                // We will lookup the default one found earlier or throw
+                // 4. Default Fallback
                 if (defaultWarehouseId) {
                     targetWarehouse = defaultWarehouseId;
+                    source = "DEFAULT";
                 } else {
-                    throw new Error(`No warehouse allocation found for line ${l.productName} and no default set.`);
+                    throw new Error(`No warehouse found for line ${l.productName}.`);
                 }
             }
+
+            logDebug(`   📦 Line: "${l.productName}" -> Warehouse: ${targetWarehouse} (Source: ${source})`);
 
             return {
                 orderLineId: l.id,
@@ -139,7 +175,6 @@ export const shopifyFulfillmentSync = task({
                 }]
             };
         });
-
 
         logDebug(`   📦 Sending Fulfillment Mutation...`);
 
