@@ -1,6 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
 import { shopifyFulfillmentSync } from '@/trigger/shopify-fulfillment-sync';
+import { db } from '@/db';
+import { integrations } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const config = {
     api: { bodyParser: false },
@@ -25,17 +28,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         console.info(`   📡 [Webhook Handler] Received webhook! Topic: ${topic} | Shop: ${shopDomain} | HMAC: ${hmac ? 'Present' : 'Missing'}`);
 
-        // Secret Check
-        const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+        // Secret Check (Global or Dynamic)
+        let secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+
+        // If no global secret, try to find one per-vendor in the DB
+        if (!secret && shopDomain) {
+            const integration = await db.query.integrations.findFirst({
+                where: eq(integrations.storeUrl, shopDomain.toString())
+            });
+            // Try to find it in settings json
+            const settings = integration?.settings as any;
+            secret = settings?.webhookSecret;
+
+            if (secret) {
+                console.info(`   🔑 [Webhook Handler] Using dynamic secret for store: ${shopDomain}`);
+            }
+        }
+
         if (secret && hmac) {
             const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
             if (hash !== hmac) {
-                console.error(`   ⛔ [Webhook Handler] HMAC Verification Failed! Expected: ${hash}, Got: ${hmac}`);
+                console.error(`   ⛔ [Webhook Handler] HMAC Verification Failed! Store: ${shopDomain}`);
                 return res.status(401).send('HMAC verification failed');
             }
             console.info(`   ✅ [Webhook Handler] HMAC Verified.`);
         } else if (!secret) {
-            console.warn("   ⚠️ [Webhook Handler] Warning: SHOPIFY_WEBHOOK_SECRET is not set. Proceeding without signature verification.");
+            console.warn(`   ⚠️ [Webhook Handler] No Secret found for store ${shopDomain}. Proceeding without verification (Security Risk).`);
         }
 
         const payload = JSON.parse(rawBody.toString());
