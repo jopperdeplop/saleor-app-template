@@ -149,12 +149,12 @@ export const shopifyInventorySync = task({
             let saleorProd: any = null;
 
             // Step 1: Lookup by Slug (Deterministic & Fastest)
-            const slugRes = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id name variants{id name}}}`, { s: predictableSlug });
+            const slugRes = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id name variants{id name sku}}}`, { s: predictableSlug });
             saleorProd = slugRes.data?.product;
 
             // Step 2: Fallback to Search (In case slug changed or was manually set)
             if (!saleorProd) {
-                const searchRes = await saleorFetch(`query FindProd($n:String!){products(filter:{search:$n},first:20){edges{node{id name variants{id name}}}}}`, { n: cleanTitle });
+                const searchRes = await saleorFetch(`query FindProd($n:String!){products(filter:{search:$n},first:20){edges{node{id name variants{id name sku}}}}}`, { n: cleanTitle });
                 saleorProd = searchRes.data?.products?.edges?.find((e: any) => e.node.name?.trim() === cleanTitle)?.node;
             }
 
@@ -167,13 +167,10 @@ export const shopifyInventorySync = task({
             for (const vEdge of sp.variants.edges) {
                 const sv = vEdge.node;
 
-                // Find matching Saleor Variant
+                // Find matching Saleor Variant by SKU (which is the Shopify ID)
                 const saleorVar = saleorProd.variants.find((ev: any) => {
-                    const evName = (ev.name || "").trim().toLowerCase();
-                    const svName = (sv.title || "").trim().toLowerCase();
-
-                    if (svName === "default title") return evName === "" || evName === "default title";
-                    return evName === svName;
+                    const shopifyId = sv.id.split('/').pop();
+                    return ev.sku === shopifyId;
                 });
 
                 if (saleorVar) {

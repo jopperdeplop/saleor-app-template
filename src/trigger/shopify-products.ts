@@ -376,13 +376,16 @@ export const shopifyProductSync = task({
 
             for (const vEdge of p.variants.edges) {
                 const v = vEdge.node;
-                const sku = v.sku || `IMP-VAR-${(v.id || Math.random().toString()).split('/').pop()}`; // Fixed: Safe ID access
+                // Extract the numerical ID (e.g., 50652173928885) from the GID
+                const shopifyNumericId = v.id.split('/').pop();
+                const sku = shopifyNumericId || `VAR-${Math.random().toString(36).substring(7)}`;
 
                 const varRes = await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
                     input: {
                         product: finalProductId,
                         sku: sku,
                         name: v.title || "Default",
+                        externalReference: v.id,
                         attributes: [],
                         trackInventory: true,
                         stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity: v.inventoryQuantity }] : []

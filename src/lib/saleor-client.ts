@@ -43,7 +43,9 @@ query GetOrderDetails($id: ID!) {
   order(id: $id) {
     id
     number
+    externalReference
     userEmail
+    metadata { key value }
     shippingAddress {
       firstName lastName companyName streetAddress1 streetAddress2
       city postalCode country { code } countryArea phone
@@ -55,6 +57,7 @@ query GetOrderDetails($id: ID!) {
       variant {
         id
         sku
+        externalReference
         weight { value unit }
         product {
           name
