@@ -36,18 +36,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // If no global secret, try to find one per-vendor in the DB
         if (!secret && shopDomain) {
-            const results = await db.select()
-                .from(integrations)
-                .where(eq(integrations.storeUrl, shopDomain.toString()))
-                .limit(1);
+            try {
+                if (!process.env.POSTGRES_URL) {
+                    throw new Error("POSTGRES_URL is not defined in environment variables.");
+                }
 
-            const integration = results[0];
-            // Try to find it in settings json
-            const settings = integration?.settings as any;
-            secret = settings?.webhookSecret;
+                const results = await db.select()
+                    .from(integrations)
+                    .where(eq(integrations.storeUrl, shopDomain.toString()))
+                    .limit(1);
 
-            if (secret) {
-                console.info(`   🔑 [Webhook Handler] Using dynamic secret for store: ${shopDomain}`);
+                const integration = results[0];
+                const settings = integration?.settings as any;
+                secret = settings?.webhookSecret;
+
+                if (secret) {
+                    console.info(`   🔑 [Webhook Handler] Using dynamic secret for store: ${shopDomain}`);
+                }
+            } catch (dbError: any) {
+                console.warn(`   ⚠️ [Webhook Handler] Database Lookup Failed: ${dbError.message}. Proceeding without verification.`);
+                // Note: We don't throw here, so the webhook can still trigger the task (unverified)
             }
         }
 
@@ -59,7 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
             console.info(`   ✅ [Webhook Handler] HMAC Verified.`);
         } else if (!secret) {
-            console.warn(`   ⚠️ [Webhook Handler] No Secret found for store ${shopDomain}. Proceeding without verification (Security Risk).`);
+            console.warn(`   ⚠️ [Webhook Handler] No valid secret (Global or DB) found for store ${shopDomain}. Processing unverified.`);
         }
 
         const payload = JSON.parse(rawBody.toString());
