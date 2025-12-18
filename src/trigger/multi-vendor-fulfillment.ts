@@ -114,7 +114,8 @@ async function ensureShopifyFulfillmentWebhook(integration: any) {
                     webhook: {
                         topic: topic,
                         address: webhookUrl,
-                        format: "json"
+                        format: "json",
+                        fields: ["order_id", "tracking_number", "tracking_urls"]
                     }
                 })
             });
