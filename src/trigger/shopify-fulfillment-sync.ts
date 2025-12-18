@@ -125,9 +125,8 @@ export const shopifyFulfillmentSync = task({
         logDebug(`   📦 Sending Fulfillment Mutation...`);
 
         const fulfillRes = await client.mutation(FULFILLMENT_CREATE, {
+            order: saleorOrder.id,
             input: {
-                order: saleorOrder.id,
-                status: "FULFILLED",
                 lines: linesToFulfill,
                 trackingNumber: payload.trackingNumber,
                 notifyCustomer: true
