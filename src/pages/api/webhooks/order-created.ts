@@ -6,7 +6,7 @@ import {
 } from "@/generated/graphql";
 import { createClient } from "@/lib/create-graphq-client";
 import { saleorApp } from "@/saleor-app";
-import { generateShippingLabel } from "@/trigger/orders";
+import { shopifyGenerateShippingLabel } from "@/trigger/shopify-orders";
 
 /**
  * Create abstract Webhook. It decorates handler and performs security checks under the hood.
@@ -39,7 +39,7 @@ export default async function handler(req: any, res: any) {
     console.log(`🚚 Triggering shipping label generation...`);
     try {
       // Use Order ID as idempotency key to prevent duplicate runs
-      const handle = await generateShippingLabel.trigger({ orderId: order.id }, { idempotencyKey: order.id });
+      const handle = await shopifyGenerateShippingLabel.trigger({ orderId: order.id }, { idempotencyKey: order.id });
       console.log(`   🚀 Task Triggered! Handle ID: ${handle.id} (Idempotency Key: ${order.id})`);
     } catch (e) {
       console.error("   ❌ Failed to trigger task:", e);
