@@ -37,7 +37,7 @@ export const shopifyFulfillmentSync = task({
             // Fallback: Continue and try broad search, but this is the primary failure point
         }
 
-        const brandSlug = brandName ? brandName.toLowerCase().replace(/[^a-z0-9]/g, '_') : null;
+        const brandSlug = brandName ? slugify(brandName) : null;
         const metadataKey = brandSlug ? `shopify_order_id_${brandSlug}` : null;
 
         logDebug(`   🎯 Target Metadata Key: ${metadataKey || '(Broad Search)'} | Value: ${payload.shopifyOrderId}`);
@@ -142,3 +142,7 @@ export const shopifyFulfillmentSync = task({
         return { success: true, orderNumber: saleorOrder.number };
     }
 });
+
+function slugify(text: string) {
+    return text.toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
