@@ -123,19 +123,25 @@ export const shopifyFulfillmentSync = task({
         // B. Fetch Vendor Warehouse (Best Effort)
         if (brandName) {
             const vendorSlug = `vendor-${slugify(brandName)}`;
-            logDebug(`   🏭 Looking for Vendor Warehouse with slug: ${vendorSlug}`);
-            // We use a custom query to filter by slug specifically if possible, or search
+            logDebug(`   🏭 Looking for Vendor Warehouse: "${brandName}" (Slug: ${vendorSlug})`);
+
+            // Search by both name (broad) and filter by slug
             const { data: whData } = await client.query(`
-                query FindWarehouseBySlug($slug: String) {
-                    warehouses(filter: { slug: [$slug] }, first: 1) {
-                        edges { node { id name } }
+                query FindWarehouse($slug: String, $search: String) {
+                    warehouses(filter: { slug: [$slug], search: $search }, first: 5) {
+                        edges { node { id name slug } }
                     }
                 }
-            `, { slug: vendorSlug }).toPromise();
+            `, { slug: vendorSlug, search: brandName }).toPromise();
 
-            vendorWarehouseId = whData?.warehouses?.edges?.[0]?.node?.id;
-            if (vendorWarehouseId) {
-                logDebug(`   ✅ Found Vendor Warehouse: ${whData.warehouses.edges[0].node.name} (${vendorWarehouseId})`);
+            const edges = whData?.warehouses?.edges || [];
+            // Prioritize warehouse with "Warehouse" in name or matching slug
+            const foundWarehouse = edges.find((e: any) => e.node.slug === vendorSlug)?.node
+                || edges.find((e: any) => e.node.name.toLowerCase().includes(brandName.toLowerCase()))?.node;
+
+            if (foundWarehouse) {
+                vendorWarehouseId = foundWarehouse.id;
+                logDebug(`   ✅ Found Vendor Warehouse: ${foundWarehouse.name} (${vendorWarehouseId})`);
             } else {
                 logDebug(`   ⚠️ Vendor Warehouse not found. Will rely on Allocations or Default.`);
             }
@@ -143,26 +149,25 @@ export const shopifyFulfillmentSync = task({
 
         // 6. Execute Saleor Fulfillment
         const linesToFulfill = saleorOrder.lines.map((l: any) => {
-            let targetWarehouse = process.env.SALEOR_WAREHOUSE_ID; // 1. Env Override
-            let source = "ENV";
+            let targetWarehouse = null;
+            let source = "NONE";
 
-            if (!targetWarehouse && vendorWarehouseId) {
-                // 2. Vendor Warehouse (Pattern Matching) - Prioritize this if no Env set
-                // This covers "Zero Touch" where allocation might not exist yet
+            if (vendorWarehouseId) {
+                // 1. Vendor Warehouse (Pattern Matching) - Prioritize for multi-vendor
                 targetWarehouse = vendorWarehouseId;
                 source = "VENDOR_MATCH";
-            } else if (!targetWarehouse && l.allocations?.length > 0) {
-                // 3. Exact Allocation (Fallback if Vendor WH mismatch or specific stock used)
+            } else if (l.allocations?.length > 0) {
+                // 2. Exact Allocation (Fallback)
                 targetWarehouse = l.allocations[0].warehouse.id;
                 source = "ALLOCATION";
-            } else if (!targetWarehouse) {
-                // 4. Default Fallback
-                if (defaultWarehouseId) {
-                    targetWarehouse = defaultWarehouseId;
-                    source = "DEFAULT";
-                } else {
-                    throw new Error(`No warehouse found for line ${l.productName}.`);
-                }
+            } else {
+                // 3. Env Override or Default Fallback
+                targetWarehouse = process.env.SALEOR_WAREHOUSE_ID || defaultWarehouseId;
+                source = targetWarehouse === process.env.SALEOR_WAREHOUSE_ID ? "ENV" : "DEFAULT";
+            }
+
+            if (!targetWarehouse) {
+                throw new Error(`No warehouse found for line ${l.productName}.`);
             }
 
             logDebug(`   📦 Line: "${l.productName}" -> Warehouse: ${targetWarehouse} (Source: ${source})`);
@@ -209,5 +214,5 @@ export const shopifyFulfillmentSync = task({
 });
 
 function slugify(text: string) {
-    return text.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    return text.toLowerCase().replace(/[^a-z0-9]/g, '-');
 }

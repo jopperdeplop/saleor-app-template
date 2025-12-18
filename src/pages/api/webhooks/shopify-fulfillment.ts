@@ -17,13 +17,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
         const rawBody = await getRawBody(req);
-        console.error(`   🔍 [Webhook Handler] Raw body length: ${rawBody.length}`);
+        console.info(`   🔍 [Webhook Handler] Raw body length: ${rawBody.length}`);
 
         const hmac = req.headers['x-shopify-hmac-sha256'];
         const topic = req.headers['x-shopify-topic'];
         const shopDomain = req.headers['x-shopify-shop-domain'];
 
-        console.error(`   📡 [Webhook Handler] Received webhook! Topic: ${topic} | Shop: ${shopDomain} | HMAC: ${hmac ? 'Present' : 'Missing'}`);
+        console.info(`   📡 [Webhook Handler] Received webhook! Topic: ${topic} | Shop: ${shopDomain} | HMAC: ${hmac ? 'Present' : 'Missing'}`);
 
         // Secret Check
         const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -33,13 +33,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 console.error(`   ⛔ [Webhook Handler] HMAC Verification Failed! Expected: ${hash}, Got: ${hmac}`);
                 return res.status(401).send('HMAC verification failed');
             }
-            console.error(`   ✅ [Webhook Handler] HMAC Verified.`);
+            console.info(`   ✅ [Webhook Handler] HMAC Verified.`);
         } else if (!secret) {
-            console.error("   ⚠️ [Webhook Handler] Warning: SHOPIFY_WEBHOOK_SECRET is not set. Proceeding without signature verification.");
+            console.warn("   ⚠️ [Webhook Handler] Warning: SHOPIFY_WEBHOOK_SECRET is not set. Proceeding without signature verification.");
         }
 
         const payload = JSON.parse(rawBody.toString());
-        console.error(`   📝 [Webhook Handler] Payload parsed. Keys: ${Object.keys(payload).join(', ')}`);
+        console.info(`   📝 [Webhook Handler] Payload parsed. Keys: ${Object.keys(payload).join(', ')}`);
 
         // Topic: fulfillments/create
         if (topic === 'fulfillments/create') {
@@ -48,10 +48,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const trackingNumber = payload.tracking_number || (Array.isArray(payload.tracking_numbers) ? payload.tracking_numbers[0] : null);
             const trackingUrl = payload.tracking_url || (Array.isArray(payload.tracking_urls) ? payload.tracking_urls[0] : null);
 
-            console.error(`   📦 [Webhook Handler] Data Extracted -> OrderID: ${shopifyOrderId}, Tracking: ${trackingNumber}`);
+            console.info(`   📦 [Webhook Handler] Data Extracted -> OrderID: ${shopifyOrderId}, Tracking: ${trackingNumber}`);
 
             if (shopifyOrderId) {
-                console.error(`   🚀 [Webhook Handler] Triggering Sync Task for Order #${shopifyOrderId}...`);
+                console.info(`   🚀 [Webhook Handler] Triggering Sync Task for Order #${shopifyOrderId}...`);
 
                 const handle = await shopifyFulfillmentSync.trigger({
                     shopifyOrderId: shopifyOrderId,
@@ -60,14 +60,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     vendorStoreUrl: shopDomain?.toString() || ""
                 });
 
-                console.error(`   ✅ [Webhook Handler] Task Triggered! Handle ID: ${handle.id}`);
+                console.info(`   ✅ [Webhook Handler] Task Triggered! Handle ID: ${handle.id}`);
                 return res.status(200).json({ success: true, handleId: handle.id });
             } else {
-                console.error(`   ⚠️ [Webhook Handler] Missing 'order_id' or 'admin_graphql_api_id' in payload.`);
+                console.warn(`   ⚠️ [Webhook Handler] Missing 'order_id' or 'admin_graphql_api_id' in payload.`);
                 return res.status(200).json({ ignored: true, reason: "missing_order_id" });
             }
         } else {
-            console.error(`   ℹ️ [Webhook Handler] Ignoring topic: ${topic}`);
+            console.info(`   ℹ️ [Webhook Handler] Ignoring topic: ${topic}`);
         }
 
         res.status(200).send('Webhook Received');
