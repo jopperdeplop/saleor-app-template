@@ -19,6 +19,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
     try {
+        console.info("🛠️ [Webhook Handler] v3.1 (Select Fix + Logging) - Handler invoked");
+        console.info(`   🌍 [Webhook Handler] Environment check: POSTGRES_URL: ${process.env.POSTGRES_URL ? 'PRESENT' : 'MISSING'}, SHOPIFY_WEBHOOK_SECRET: ${process.env.SHOPIFY_WEBHOOK_SECRET ? 'PRESENT' : 'MISSING'}`);
+
         const rawBody = await getRawBody(req);
         console.info(`   🔍 [Webhook Handler] Raw body length: ${rawBody.length}`);
 
@@ -93,7 +96,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         res.status(200).send('Webhook Received');
     } catch (error: any) {
-        console.error("   ❌ [Webhook Handler] Handler Error:", error.message);
+        console.error("   ❌ [Webhook Handler] Handler Error (Full):", error);
+        if (error.stack) console.error("   ❌ [Webhook Handler] Error Stack:", error.stack);
         res.status(500).send('Internal Error');
     }
 }
