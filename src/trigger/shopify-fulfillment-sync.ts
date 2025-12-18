@@ -122,21 +122,33 @@ export const shopifyFulfillmentSync = task({
             }]
         }));
 
+        logDebug(`   📦 Sending Fulfillment Mutation...`);
+
         const fulfillRes = await client.mutation(FULFILLMENT_CREATE, {
             input: {
                 order: saleorOrder.id,
+                status: "FULFILLED",
                 lines: linesToFulfill,
                 trackingNumber: payload.trackingNumber,
                 notifyCustomer: true
             }
         }).toPromise();
 
+        logDebug(`   🔍 Raw Mutation Result:`, JSON.stringify(fulfillRes));
+
+        if (fulfillRes.error) {
+            logDebug(`   ❌ GraphQL Network/Auth Error:`, fulfillRes.error.message);
+            throw new Error("GraphQL Error: " + fulfillRes.error.message);
+        }
+
         if (fulfillRes.data?.orderFulfill?.errors?.length > 0) {
             const errorMsg = JSON.stringify(fulfillRes.data.orderFulfill.errors);
-            logDebug(`   ❌ Saleor Fulfillment Failed:`, errorMsg);
+            logDebug(`   ❌ Saleor Logic Error:`, errorMsg);
             throw new Error(`Saleor Fulfillment Failed: ${errorMsg}`);
+        } else if (fulfillRes.data?.orderFulfill?.fulfillment) {
+            logDebug(`   🎉 Saleor Order #${saleorOrder.number} marked as Fulfilled! ID: ${fulfillRes.data.orderFulfill.fulfillment.id}`);
         } else {
-            logDebug(`   🎉 Saleor Order #${saleorOrder.number} marked as Fulfilled!`);
+            throw new Error("Mutation success but no fulfillment object returned?");
         }
 
         return { success: true, orderNumber: saleorOrder.number };
