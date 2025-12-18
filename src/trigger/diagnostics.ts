@@ -53,7 +53,7 @@ export const diagnoseShopifyIntegration = task({
 
             // 3. REPAIR MODE: Register or UPDATE if incorrect
             if (payload.repair) {
-                const needsRepair = fulfillmentWebhooks.length === 0 || fulfillmentWebhooks.some(w => w.address !== webhookUrl);
+                const needsRepair = fulfillmentWebhooks.length === 0 || fulfillmentWebhooks.some((w: any) => w.address !== webhookUrl);
 
                 if (needsRepair) {
                     logDebug(`   🛠️ Repair Mode: Fixing webhooks for ${webhookUrl}...`);
@@ -116,7 +116,7 @@ export const diagnoseShopifyIntegration = task({
                     VERCEL_URL: envVercelUrl || "MISSING",
                     RESOLVED_URL: appUrl
                 },
-                recommendation: fulfillmentWebhooks.some(w => w.address.includes('partner.salp.shop'))
+                recommendation: fulfillmentWebhooks.some((w: any) => w.address.includes('partner.salp.shop'))
                     ? "Your webhook is currently pointing to the WRONG domain. Run with repair:true and ensure forceUrl is set or APP_URL is fixed."
                     : "Looks good if the RESOLVED_URL matches your Vercel address."
             };
