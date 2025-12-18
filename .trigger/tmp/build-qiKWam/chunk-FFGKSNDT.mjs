@@ -8315,10 +8315,30 @@ query GetOrderDetails($id: ID!) {
           }
         }
       }
+      allocations {
+        quantity
+        warehouse { id }
+      }
     }
     shippingMethod {
       id
       name
+    }
+  }
+}
+`;
+var WAREHOUSE_QUERY = `
+query FindWarehouse($search: String!) {
+  warehouses(filter: { search: $search }, first: 1) {
+    edges {
+      node {
+        id
+        name
+        address {
+          firstName lastName companyName streetAddress1 streetAddress2
+          city postalCode country { code } countryArea phone
+        }
+      }
     }
   }
 }
@@ -8595,6 +8615,7 @@ var saleorApp = new SaleorApp({
 export {
   makeSaleorClient,
   ORDER_QUERY,
+  WAREHOUSE_QUERY,
   FULFILLMENT_CREATE,
   UPDATE_ORDER_METADATA,
   apl
@@ -8623,4 +8644,4 @@ react/cjs/react.development.js:
    * LICENSE file in the root directory of this source tree.
    *)
 */
-//# sourceMappingURL=chunk-HYDI5HR6.mjs.map
+//# sourceMappingURL=chunk-FFGKSNDT.mjs.map

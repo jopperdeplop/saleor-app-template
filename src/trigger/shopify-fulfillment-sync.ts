@@ -99,28 +99,47 @@ export const shopifyFulfillmentSync = task({
 
         logDebug(`   ✅ Found Saleor Order: #${saleorOrder.number} (${saleorOrder.id})`);
 
-        // 5. Determine Warehouse
-        let warehouseId = process.env.SALEOR_WAREHOUSE_ID;
-        if (!warehouseId) {
-            logDebug(`   ⚠️ SALEOR_WAREHOUSE_ID not set. Fetching default warehouse...`);
-            const { data: whData } = await client.query(`query DefaultWarehouse { warehouses(first: 1) { edges { node { id name } } } }`, {}).toPromise();
-            warehouseId = whData?.warehouses?.edges?.[0]?.node?.id;
-            if (warehouseId) {
-                logDebug(`   🏢 Using Default Warehouse: ${whData?.warehouses?.edges?.[0]?.node?.name} (${warehouseId})`);
+        // 5. Determine Default Warehouse (Fallback)
+        let defaultWarehouseId = process.env.SALEOR_WAREHOUSE_ID;
+        if (!defaultWarehouseId) {
+            const warehouseRes = await client.query(WAREHOUSE_QUERY, { search: "" }).toPromise();
+            defaultWarehouseId = warehouseRes.data?.warehouses?.edges?.[0]?.node?.id;
+            if (defaultWarehouseId) {
+                logDebug(`   🏢 Found Default Warehouse: ${defaultWarehouseId}`);
             } else {
-                throw new Error("No Warehouse found in Saleor. Cannot fulfill order.");
+                logDebug(`   ⚠️ No default warehouse found. Expecting explicit allocations.`);
             }
         }
 
         // 6. Execute Saleor Fulfillment
         // We fulfill all lines assigned to this Shopify Order
-        const linesToFulfill = saleorOrder.lines.map((l: any) => ({
-            orderLineId: l.id,
-            stocks: [{
-                quantity: l.quantity,
-                warehouse: warehouseId
-            }]
-        }));
+        const linesToFulfill = saleorOrder.lines.map((l: any) => {
+            // Find the warehouse where this line is allocated
+            // If explicit environment var is set, use it (override)
+            // Otherwise, use the allocation's warehouse
+            let targetWarehouse = process.env.SALEOR_WAREHOUSE_ID;
+
+            if (!targetWarehouse && l.allocations?.length > 0) {
+                targetWarehouse = l.allocations[0].warehouse.id;
+            } else if (!targetWarehouse) {
+                // Fallback if no allocation and no env var (rare, but handle safely)
+                // We will lookup the default one found earlier or throw
+                if (defaultWarehouseId) {
+                    targetWarehouse = defaultWarehouseId;
+                } else {
+                    throw new Error(`No warehouse allocation found for line ${l.productName} and no default set.`);
+                }
+            }
+
+            return {
+                orderLineId: l.id,
+                stocks: [{
+                    quantity: l.quantity,
+                    warehouse: targetWarehouse
+                }]
+            };
+        });
+
 
         logDebug(`   📦 Sending Fulfillment Mutation...`);
 

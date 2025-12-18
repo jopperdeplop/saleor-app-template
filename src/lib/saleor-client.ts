@@ -67,6 +67,10 @@ query GetOrderDetails($id: ID!) {
           }
         }
       }
+      allocations {
+        quantity
+        warehouse { id }
+      }
     }
     shippingMethod {
       id

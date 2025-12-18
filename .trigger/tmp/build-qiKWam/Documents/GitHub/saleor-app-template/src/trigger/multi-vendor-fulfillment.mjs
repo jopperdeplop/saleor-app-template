@@ -3,7 +3,7 @@ import {
   UPDATE_ORDER_METADATA,
   apl,
   makeSaleorClient
-} from "../../../../../chunk-HYDI5HR6.mjs";
+} from "../../../../../chunk-FFGKSNDT.mjs";
 import "../../../../../chunk-UHMN67P6.mjs";
 import {
   logDebug

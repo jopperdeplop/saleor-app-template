@@ -1,8 +1,9 @@
 import {
   FULFILLMENT_CREATE,
+  WAREHOUSE_QUERY,
   apl,
   makeSaleorClient
-} from "../../../../../chunk-HYDI5HR6.mjs";
+} from "../../../../../chunk-FFGKSNDT.mjs";
 import "../../../../../chunk-UHMN67P6.mjs";
 import {
   logDebug
@@ -91,24 +92,35 @@ var shopifyFulfillmentSync = task({
       return { status: "not_found" };
     }
     logDebug(`   ✅ Found Saleor Order: #${saleorOrder.number} (${saleorOrder.id})`);
-    let warehouseId = process.env.SALEOR_WAREHOUSE_ID;
-    if (!warehouseId) {
-      logDebug(`   ⚠️ SALEOR_WAREHOUSE_ID not set. Fetching default warehouse...`);
-      const { data: whData } = await client.query(`query DefaultWarehouse { warehouses(first: 1) { edges { node { id name } } } }`, {}).toPromise();
-      warehouseId = whData?.warehouses?.edges?.[0]?.node?.id;
-      if (warehouseId) {
-        logDebug(`   🏢 Using Default Warehouse: ${whData?.warehouses?.edges?.[0]?.node?.name} (${warehouseId})`);
+    let defaultWarehouseId = process.env.SALEOR_WAREHOUSE_ID;
+    if (!defaultWarehouseId) {
+      const warehouseRes = await client.query(WAREHOUSE_QUERY, { search: "" }).toPromise();
+      defaultWarehouseId = warehouseRes.data?.warehouses?.edges?.[0]?.node?.id;
+      if (defaultWarehouseId) {
+        logDebug(`   🏢 Found Default Warehouse: ${defaultWarehouseId}`);
       } else {
-        throw new Error("No Warehouse found in Saleor. Cannot fulfill order.");
+        logDebug(`   ⚠️ No default warehouse found. Expecting explicit allocations.`);
       }
     }
-    const linesToFulfill = saleorOrder.lines.map((l) => ({
-      orderLineId: l.id,
-      stocks: [{
-        quantity: l.quantity,
-        warehouse: warehouseId
-      }]
-    }));
+    const linesToFulfill = saleorOrder.lines.map((l) => {
+      let targetWarehouse = process.env.SALEOR_WAREHOUSE_ID;
+      if (!targetWarehouse && l.allocations?.length > 0) {
+        targetWarehouse = l.allocations[0].warehouse.id;
+      } else if (!targetWarehouse) {
+        if (defaultWarehouseId) {
+          targetWarehouse = defaultWarehouseId;
+        } else {
+          throw new Error(`No warehouse allocation found for line ${l.productName} and no default set.`);
+        }
+      }
+      return {
+        orderLineId: l.id,
+        stocks: [{
+          quantity: l.quantity,
+          warehouse: targetWarehouse
+        }]
+      };
+    });
     logDebug(`   📦 Sending Fulfillment Mutation...`);
     const fulfillRes = await client.mutation(FULFILLMENT_CREATE, {
       order: saleorOrder.id,
