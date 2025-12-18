@@ -94,7 +94,7 @@ query FindWarehouse($search: String!) {
 `;
 
 export const FULFILLMENT_CREATE = `
-mutation FulfillmentCreate($input: FulfillmentCreateInput!) {
+mutation FulfillmentCreate($input: OrderFulfillInput!) {
   orderFulfill(input: $input) {
     fulfillment { id status trackingNumber }
     errors { field message }
