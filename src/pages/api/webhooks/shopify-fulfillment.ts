@@ -42,8 +42,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Topic: fulfillments/create
         if (topic === 'fulfillments/create') {
             const shopifyOrderId = payload.order_id?.toString();
-            const trackingNumber = payload.tracking_number;
-            const trackingUrl = payload.tracking_url;
+            const trackingNumber = payload.tracking_number || (Array.isArray(payload.tracking_numbers) ? payload.tracking_numbers[0] : null);
+            const trackingUrl = payload.tracking_url || (Array.isArray(payload.tracking_urls) ? payload.tracking_urls[0] : null);
 
             if (shopifyOrderId) {
                 console.log(`   📦 [Webhook Handler] Fulfillment detected. Triggering Sync Task...`);

@@ -99,13 +99,26 @@ export const shopifyFulfillmentSync = task({
 
         logDebug(`   ✅ Found Saleor Order: #${saleorOrder.number} (${saleorOrder.id})`);
 
-        // 5. Execute Saleor Fulfillment
+        // 5. Determine Warehouse
+        let warehouseId = process.env.SALEOR_WAREHOUSE_ID;
+        if (!warehouseId) {
+            logDebug(`   ⚠️ SALEOR_WAREHOUSE_ID not set. Fetching default warehouse...`);
+            const { data: whData } = await client.query(`query DefaultWarehouse { warehouses(first: 1) { edges { node { id name } } } }`, {}).toPromise();
+            warehouseId = whData?.warehouses?.edges?.[0]?.node?.id;
+            if (warehouseId) {
+                logDebug(`   🏢 Using Default Warehouse: ${whData?.warehouses?.edges?.[0]?.node?.name} (${warehouseId})`);
+            } else {
+                throw new Error("No Warehouse found in Saleor. Cannot fulfill order.");
+            }
+        }
+
+        // 6. Execute Saleor Fulfillment
         // We fulfill all lines assigned to this Shopify Order
         const linesToFulfill = saleorOrder.lines.map((l: any) => ({
             orderLineId: l.id,
             stocks: [{
                 quantity: l.quantity,
-                warehouse: process.env.SALEOR_WAREHOUSE_ID
+                warehouse: warehouseId
             }]
         }));
 
