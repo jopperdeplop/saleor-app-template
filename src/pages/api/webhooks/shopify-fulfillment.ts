@@ -33,9 +33,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // If no global secret, try to find one per-vendor in the DB
         if (!secret && shopDomain) {
-            const integration = await db.query.integrations.findFirst({
-                where: eq(integrations.storeUrl, shopDomain.toString())
-            });
+            const results = await db.select()
+                .from(integrations)
+                .where(eq(integrations.storeUrl, shopDomain.toString()))
+                .limit(1);
+
+            const integration = results[0];
             // Try to find it in settings json
             const settings = integration?.settings as any;
             secret = settings?.webhookSecret;
