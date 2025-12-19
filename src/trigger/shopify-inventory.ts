@@ -125,7 +125,7 @@ export const shopifyInventorySync = task({
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            logger.info(`🏭 Attempting Warehouse Creation for: "${vendorName}"`);
+            logger.info(`🏭 Creating Warehouse: "${vendorName}"`);
             const inputs = {
                 name: `${vendorName} Warehouse`,
                 slug: `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
@@ -133,14 +133,11 @@ export const shopifyInventorySync = task({
                 email: "vendor@example.com"
             };
 
-            // Smart Retry Logic
-            let createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
-            if (!createRes.data?.warehouseCreate && createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\"")) {
-                logger.info("   🔄 'warehouseCreate' mismatch. Retrying with 'createWarehouse'...");
-                createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
-            }
+            const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, {
+                input: inputs
+            });
 
-            const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;
+            const result = createRes.data?.createWarehouse;
             const newId = result?.warehouse?.id;
 
             if (newId) {

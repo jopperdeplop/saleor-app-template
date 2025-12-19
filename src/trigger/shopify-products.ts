@@ -168,19 +168,7 @@ export const shopifyProductSync = task({
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            console.log(`   🏭 Attempting Warehouse Creation for: "${vendorName}"`);
-
-            // --- SCHEMA PROBE (Diagnostic) ---
-            const probe = await saleorFetch(`{ __type(name: "Mutation") { fields { name } } }`);
-            const mutations = probe.data?.__type?.fields?.map((f: any) => f.name) || [];
-            if (mutations.length > 0) {
-                const whMutations = mutations.filter((n: string) => n.toLowerCase().includes('warehouse'));
-                console.log(`   🔍 [PROBE] Available Warehouse Mutations: ${whMutations.join(', ') || 'NONE'}`);
-                console.log(`   🔍 [PROBE] Mutation Suggestions: ${mutations.filter((n: string) => n.includes('Create')).join(', ')}`);
-            } else {
-                console.warn(`   🔍 [PROBE] Could not list mutations. Please check token permissions.`);
-            }
-
+            console.log(`   🏭 Creating Warehouse: "${vendorName}"`);
             const inputs = {
                 name: `${vendorName} Warehouse`,
                 slug: slug,
@@ -188,18 +176,11 @@ export const shopifyProductSync = task({
                 email: "vendor@example.com"
             };
 
-            // Attempt 1: warehouseCreate (Modern 3.x)
-            let createRes = await saleorFetch(`mutation CreateW1($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, {
+                input: inputs
+            });
 
-            // IF Attempt 1 failed with SCHEMA error OR returned no data, try Attempt 2
-            const failedAttempt1 = !createRes.data?.warehouseCreate || (createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\""));
-
-            if (failedAttempt1) {
-                console.log("   🔄 'warehouseCreate' failed or missing. Trying 'createWarehouse'...");
-                createRes = await saleorFetch(`mutation CreateW2($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
-            }
-
-            const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;
+            const result = createRes.data?.createWarehouse;
 
             if (result?.errors?.length > 0) {
                 if (result.errors.some((e: any) => e.field === 'slug')) {
