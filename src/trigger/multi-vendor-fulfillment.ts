@@ -399,7 +399,7 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
 
     const payload = {
         register_id: registerId,
-        status: "OPEN",
+        state: "parked", // 0.9 API uses state: parked/pending/voided/closed
         user_id: "default",
         customer_id: null,
         register_sale_products: lines.map(line => ({
@@ -413,7 +413,8 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
     };
 
     try {
-        const res = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/register_sales`, {
+        logDebug(`      📡 Sending payload to Lightspeed 0.9 API: /api/register_sales`);
+        const res = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/register_sales`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${integration.accessToken}`,
