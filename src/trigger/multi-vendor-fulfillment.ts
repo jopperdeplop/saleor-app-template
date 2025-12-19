@@ -234,7 +234,7 @@ async function ensureWooCommerceWebhook(integration: any) {
     }
 
     let webhookSecret = settings.webhookSecret;
-    let needsSync = settings.webhookSecretSynced === false;
+    let needsSync = settings.webhookSecretSynced !== true;
     let justGenerated = false;
 
     if (!webhookSecret) {
