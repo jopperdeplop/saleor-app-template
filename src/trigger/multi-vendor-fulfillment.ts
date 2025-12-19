@@ -67,6 +67,8 @@ export const automateMultiVendorFulfillment = task({
                 } else if (provider === "woocommerce") {
                     await ensureWooCommerceWebhook(integration);
                     mirrorOrderId = await createMirrorOrderOnWooCommerce(integration, order, lines);
+                } else if (provider === "lightspeed") {
+                    mirrorOrderId = await createMirrorOrderOnLightspeed(integration, order, lines);
                 }
 
                 // If this is a new integration or needs secret refresh, we should also trigger an initial sync check
@@ -371,6 +373,49 @@ async function createMirrorOrderOnWooCommerce(integration: any, order: any, line
         }
     } catch (err: any) {
         logDebug(`      ❌ Network error creating WC order: ${err.message}`);
+        return null;
+    }
+}
+
+async function createMirrorOrderOnLightspeed(integration: any, order: any, lines: any[]) {
+    const domainPrefix = integration.storeUrl;
+
+    // Lightspeed X-Series 2.0 Register Sale Payload
+    const payload = {
+        register_id: "default", // We may need to fetch the first available register id or allow configuration
+        status: "OPEN",
+        user_id: "default",
+        customer_id: null, // Could map customer if matching email exists
+        register_sale_products: lines.map(line => ({
+            product_id: line.variant?.externalReference || line.variant?.sku,
+            quantity: line.quantity,
+            price: line.unitPrice.gross.amount,
+            tax: 0,
+            tax_id: "default"
+        })),
+        note: `Saleor Order: ${order.number}`
+    };
+
+    try {
+        const res = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/register_sales`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${integration.accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const json: any = await res.json();
+        if (res.ok && json.data?.id) {
+            logDebug(`      ✅ Lightspeed Mirror Sale created: ${json.data.id}`);
+            return json.data.id.toString();
+        } else {
+            logDebug(`      ❌ Lightspeed Sale Creation Failed:`, JSON.stringify(json));
+            return null;
+        }
+    } catch (err: any) {
+        logDebug(`      ❌ Network error creating Lightspeed sale: ${err.message}`);
         return null;
     }
 }
