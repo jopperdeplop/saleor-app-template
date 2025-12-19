@@ -4,7 +4,7 @@ import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V6-1615";
+const SYNC_VERSION = "LITERAL-CLONE-V8-DEDUP";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -79,7 +79,7 @@ export const shopifyProductSync = task({
                     body: JSON.stringify({ query, variables })
                 });
 
-                // Saleor returns 400 for structural errors. We MUST parse to handle fallback.
+                // Saleor returns 400 for structural errors. We MUST parse to handle fallout.
                 const json: any = await res.json();
 
                 if (json.errors) {
@@ -136,8 +136,10 @@ export const shopifyProductSync = task({
 
         const getOrCreateBrandPage = async (name: string) => {
             if (!name) return null;
-            const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:1){edges{node{id title isPublished}}}}`, { n: name });
-            const existing = find.data?.pages?.edges?.[0]?.node;
+            // Use exact title matching to avoid fuzzy search duplicates
+            const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:5){edges{node{id title isPublished}}}}`, { n: name });
+            const existing = find.data?.pages?.edges?.find((e: any) => e.node.title === name)?.node;
+
             if (existing) {
                 if (!existing.isPublished) {
                     await saleorFetch(`mutation Pub($id:ID!){pageUpdate(id:$id,input:{isPublished:true}){errors{field}}}`, { id: existing.id });
@@ -145,13 +147,14 @@ export const shopifyProductSync = task({
                 return existing.id;
             }
             console.log(`   ✨ Creating Brand Page: "${name}"`);
-            const create = await saleorFetch(`mutation Create($n:String!,$t:ID!){pageCreate(input:{title:$n,pageType:$t,isPublished:true,content:"{}"}){page{id}}}`, { n: name, t: BRAND_MODEL_TYPE_ID });
+            const create = await saleorFetch(`mutation Create($n:String!,$t:ID!){pageCreate(input:{title:$n,pageType:$t,isPublished:true,content:"{}"}){page{id} errors{field message}}}`, { n: name, t: BRAND_MODEL_TYPE_ID });
             return create.data?.pageCreate?.page?.id;
         };
 
         const getOrCreateShippingZone = async (name: string) => {
-            const find = await saleorFetch(`query Find($s:String!){shippingZones(filter:{search:$s},first:1){edges{node{id}}}}`, { s: name });
-            if (find.data?.shippingZones?.edges?.[0]) return find.data.shippingZones.edges[0].node.id;
+            const find = await saleorFetch(`query Find($s:String!){shippingZones(filter:{search:$s},first:5){edges{node{id name}}}}`, { s: name });
+            const existing = find.data?.shippingZones?.edges?.find((e: any) => e.node.name === name)?.node;
+            if (existing) return existing.id;
 
             console.log(`   🚚 Creating Shipping Zone: "${name}"`);
             const countries = ["DE", "FR", "GB", "IT", "ES", "PL", "NL", "BE", "AT", "PT", "SE", "DK", "FI", "NO", "IE", "US", "CA"];
@@ -163,9 +166,10 @@ export const shopifyProductSync = task({
 
         const getOrCreateWarehouse = async (vendorName: string, channels: any[]) => {
             const slug = `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-            const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:1){edges{node{id slug}}}}`, { s: vendorName });
+            // Use Exact Slug Matching if possible, or filter results
+            const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id name slug}}}}`, { s: vendorName });
 
-            const existing = find.data?.warehouses?.edges?.[0]?.node;
+            const existing = find.data?.warehouses?.edges?.find((e: any) => e.node.slug === slug || e.node.name === `${vendorName} Warehouse`)?.node;
             if (existing) return existing.id;
 
             console.log(`   🏭 Creating Warehouse: "${vendorName}"`);
@@ -184,7 +188,7 @@ export const shopifyProductSync = task({
 
             if (result?.errors?.length > 0) {
                 if (result.errors.some((e: any) => e.field === 'slug')) {
-                    const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id slug}}}}`, { s: slug });
+                    const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:10){edges{node{id slug}}}}`, { s: slug });
                     const found = slugSearch.data?.warehouses?.edges?.find((e: any) => e.node.slug === slug)?.node;
                     if (found) return found.id;
                 }
@@ -266,14 +270,27 @@ export const shopifyProductSync = task({
         const channels = await getSaleorChannels();
         if (channels.length === 0) { console.error("❌ No Channels found."); return; }
 
-        // --- 4. PARALLEL PROCESSING ---
+        // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
+        const uniqueVendors: string[] = Array.from(new Set(products.map((p: any) => (p.node.vendor || "Default") as string)));
+        const vendorContext = new Map<string, { brandPageId: string | null, warehouseId: string | null }>();
+
+        console.log(`   🏗️  Setting up context for ${uniqueVendors.length} unique vendors...`);
+        for (const vendor of uniqueVendors) {
+            const brandPageId = await getOrCreateBrandPage(vendor);
+            let warehouseId = await getOrCreateWarehouse(vendor, channels);
+            if (!warehouseId) warehouseId = DEFAULT_WAREHOUSE_ID;
+            vendorContext.set(vendor, { brandPageId, warehouseId });
+        }
+
+        // --- 5. PARALLEL PROCESSING ---
         console.log(`📦 Parallel Sync for ${products.length} products...`);
 
         await Promise.all(products.map(async (pEdge: any) => {
             const p = pEdge.node;
-            const brandPageId = await getOrCreateBrandPage(p.vendor || "Default");
-            let targetWarehouseId = await getOrCreateWarehouse(p.vendor || "Default", channels);
-            if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
+            const vendorName = (p.vendor || "Default") as string;
+            const context = vendorContext.get(vendorName);
+            const brandPageId = context?.brandPageId;
+            const targetWarehouseId = context?.warehouseId;
 
             let finalProductId: string | null = null;
             const cleanTitle = p.title.trim();

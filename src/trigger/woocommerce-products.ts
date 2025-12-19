@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V7-1640";
+const SYNC_VERSION = "LITERAL-CLONE-V8-DEDUP";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -136,8 +136,10 @@ export const woocommerceProductSync = task({
 
         const getOrCreateBrandPage = async (name: string) => {
             if (!name) return null;
-            const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:1){edges{node{id title isPublished}}}}`, { n: name });
-            const existing = find.data?.pages?.edges?.[0]?.node;
+            // Exact title check
+            const find = await saleorFetch(`query Find($n:String!){pages(filter:{search:$n},first:5){edges{node{id title isPublished}}}}`, { n: name });
+            const existing = find.data?.pages?.edges?.find((e: any) => e.node.title === name)?.node;
+
             if (existing) {
                 if (!existing.isPublished) {
                     await saleorFetch(`mutation Pub($id:ID!){pageUpdate(id:$id,input:{isPublished:true}){errors{field}}}`, { id: existing.id });
@@ -150,8 +152,9 @@ export const woocommerceProductSync = task({
         };
 
         const getOrCreateShippingZone = async (name: string) => {
-            const find = await saleorFetch(`query Find($s:String!){shippingZones(filter:{search:$s},first:1){edges{node{id}}}}`, { s: name });
-            if (find.data?.shippingZones?.edges?.[0]) return find.data.shippingZones.edges[0].node.id;
+            const find = await saleorFetch(`query Find($s:String!){shippingZones(filter:{search:$s},first:5){edges{node{id name}}}}`, { s: name });
+            const existing = find.data?.shippingZones?.edges?.find((e: any) => e.node.name === name)?.node;
+            if (existing) return existing.id;
 
             console.log(`   🚚 Creating Shipping Zone: "${name}"`);
             const countries = ["DE", "FR", "GB", "IT", "ES", "PL", "NL", "BE", "AT", "PT", "SE", "DK", "FI", "NO", "IE", "US", "CA"];
@@ -163,9 +166,9 @@ export const woocommerceProductSync = task({
 
         const getOrCreateWarehouse = async (vendorName: string, channels: any[]) => {
             const slug = `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-            const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:1){edges{node{id slug}}}}`, { s: vendorName });
+            const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id slug name}}}}`, { s: vendorName });
 
-            const existing = find.data?.warehouses?.edges?.[0]?.node;
+            const existing = find.data?.warehouses?.edges?.find((e: any) => e.node.slug === slug || e.node.name === `${vendorName} Warehouse`)?.node;
             if (existing) return existing.id;
 
             console.log(`   🏭 Creating Warehouse: "${vendorName}"`);
@@ -184,7 +187,7 @@ export const woocommerceProductSync = task({
 
             if (result?.errors?.length > 0) {
                 if (result.errors.some((e: any) => e.field === 'slug')) {
-                    const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id slug}}}}`, { s: slug });
+                    const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:10){edges{node{id slug}}}}`, { s: slug });
                     const found = slugSearch.data?.warehouses?.edges?.find((e: any) => e.node.slug === slug)?.node;
                     if (found) return found.id;
                 }
@@ -265,13 +268,25 @@ export const woocommerceProductSync = task({
         const channels = await getSaleorChannels();
         if (channels.length === 0) { console.error("❌ No Channels found."); return; }
 
-        // --- 4. PARALLEL PROCESSING ---
+        // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
+        const uniqueVendors = [storeName]; // WooCommerce is naturally single-vendor per site
+        const vendorContext = new Map<string, { brandPageId: string | null, warehouseId: string | null }>();
+
+        console.log(`   🏗️  Setting up context for ${uniqueVendors.length} unique vendors...`);
+        for (const vendor of uniqueVendors) {
+            const brandPageId = await getOrCreateBrandPage(vendor);
+            let warehouseId = await getOrCreateWarehouse(vendor, channels);
+            if (!warehouseId) warehouseId = DEFAULT_WAREHOUSE_ID;
+            vendorContext.set(vendor, { brandPageId, warehouseId });
+        }
+
+        // --- 5. PARALLEL PROCESSING ---
         console.log(`📦 Parallel Sync for ${products.length} products...`);
 
         await Promise.all(products.map(async (p: any) => {
-            const brandPageId = await getOrCreateBrandPage(storeName);
-            let targetWarehouseId = await getOrCreateWarehouse(storeName, channels);
-            if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
+            const context = vendorContext.get(storeName);
+            const brandPageId = context?.brandPageId;
+            const targetWarehouseId = context?.warehouseId;
 
             let finalProductId: string | null = null;
             const cleanTitle = p.name.trim();

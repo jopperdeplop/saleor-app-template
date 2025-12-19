@@ -121,14 +121,16 @@ export const shopifyInventorySync = task({
         const channels = channelsRes.data?.channels || [];
 
         const getWarehouseId = async (vendorName: string) => {
-            const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:1){edges{node{id slug}}}}`, { s: vendorName });
-            const existing = find.data?.warehouses?.edges?.[0]?.node;
+            const slug = `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+            const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id name slug}}}}`, { s: vendorName });
+
+            const existing = find.data?.warehouses?.edges?.find((e: any) => e.node.slug === slug || e.node.name === `${vendorName} Warehouse`)?.node;
             if (existing) return existing.id;
 
             logger.info(`🏭 Creating Warehouse: "${vendorName}"`);
             const inputs = {
                 name: `${vendorName} Warehouse`,
-                slug: `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                slug: slug,
                 address: DEFAULT_VENDOR_ADDRESS,
                 email: "vendor@example.com"
             };
@@ -153,14 +155,25 @@ export const shopifyInventorySync = task({
             return DEFAULT_WAREHOUSE_ID;
         };
 
-        // 3. Process Inventory Updates
+        // --- 3. DEDUPLICATED CONTEXT SETUP ---
+        const uniqueVendors: string[] = Array.from(new Set(products.map((p: any) => (p.node.vendor || "Default") as string)));
+        const warehouseContext = new Map<string, string>();
+
+        logger.info(`🏗️  Resolving warehouses for ${uniqueVendors.length} vendors...`);
+        for (const vendor of uniqueVendors) {
+            const whId = await getWarehouseId(vendor);
+            if (whId) warehouseContext.set(vendor, whId);
+        }
+
+        // --- 4. Process Inventory Updates ---
         logger.info(`🔄 Deterministic Sync for ${products.length} products...`);
 
-        for (const pEdge of products) {
+        for (const pEdge of products as any[]) {
             const sp = pEdge.node;
             if (!sp || !sp.title) continue;
 
-            const warehouseId = await getWarehouseId(sp.vendor || "Default");
+            const vendorName = (sp.vendor || "Default") as string;
+            const warehouseId = warehouseContext.get(vendorName);
             if (!warehouseId) continue;
 
             const cleanTitle = sp.title.trim();
