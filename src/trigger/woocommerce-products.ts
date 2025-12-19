@@ -12,7 +12,7 @@ const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID;
 const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID;
 const PHOTOROOM_API_KEY = process.env.PHOTOROOM_API_KEY;
 
-// --- HELPERS (Mirrored from Shopify Baseline) ---
+// --- HELPERS (Literal Port from Shopify Baseline) ---
 
 function textToEditorJs(text: string) {
     const cleanText = text ? text.replace(/\n/g, "<br>") : "";
@@ -73,7 +73,7 @@ export const woocommerceProductSync = task({
             'Content-Type': 'application/json'
         };
 
-        // Helper: Centralized Fetch (Excatly as Shopify script)
+        // Helper: Centralized Fetch (Literal Port from Shopify Baseline)
         const saleorFetch = async (query: string, variables: any = {}) => {
             try {
                 const res = await fetch(apiUrl, {
@@ -87,7 +87,8 @@ export const woocommerceProductSync = task({
                 }
                 const json: any = await res.json();
                 if (json.errors) {
-                    console.error("   ❌ Saleor Error details:", JSON.stringify(json.errors));
+                    // Deep logging for debugging
+                    console.error("   ❌ Saleor Error Structure:", JSON.stringify(json.errors, null, 2));
                 }
                 return json;
             } catch (e) {
@@ -137,6 +138,7 @@ export const woocommerceProductSync = task({
             if (existing) return existing.id;
 
             console.log(`   🏭 Creating Warehouse for: "${vendorName}"`);
+            // Literal Port from shopify script line 159
             const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message code}}}`, {
                 input: {
                     name: `${vendorName} Warehouse`,
@@ -223,7 +225,10 @@ export const woocommerceProductSync = task({
             const storeRes = await fetch(`${integration.storeUrl}/wp-json/`, { headers: wcHeaders });
             if (storeRes.ok) {
                 const storeData = await storeRes.json();
-                if (storeData.name) storeName = storeData.name;
+                if (storeData.name) {
+                    storeName = storeData.name;
+                    console.log(`📡 Fetched Store Name: ${storeName}`);
+                }
             }
         } catch (e) { console.warn("   ⚠️ store name fetch failed."); }
 
@@ -231,7 +236,7 @@ export const woocommerceProductSync = task({
         const wcRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/products?per_page=100`, { headers: wcHeaders });
         if (!wcRes.ok) throw new Error(`WC API Error: ${wcRes.status}`);
         const products = await wcRes.json();
-        console.log(`📦 Fetched ${products.length} products.`);
+        console.log(`📦 Fetched ${products.length} products from WooCommerce.`);
 
         const channels = await getSaleorChannels();
         if (channels.length === 0) throw new Error("No Channels found.");
@@ -241,15 +246,17 @@ export const woocommerceProductSync = task({
             const cleanTitle = p.name.trim();
             const predictableSlug = p.slug || cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
+            // 1. Warehouse & Brand (Literal Port from Shopify logic)
             const brandPageId = await getOrCreateBrandPage(storeName);
             let targetWarehouseId = await getOrCreateWarehouse(storeName, channels);
             if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
 
-            // Find or Create Product
+            // 2. Find or Create Product
             const slugCheck = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id}}`, { s: predictableSlug });
             let finalProductId = slugCheck.data?.product?.id;
 
             if (!finalProductId) {
+                console.log(`   ➕ Creating new Saleor Product: "${cleanTitle}"`);
                 const createProdRes = await saleorFetch(`mutation Create($input:ProductCreateInput!){productCreate(input:$input){product{id} errors{field message}}}`, {
                     input: {
                         name: p.name,
@@ -262,6 +269,7 @@ export const woocommerceProductSync = task({
                 });
                 finalProductId = createProdRes.data?.productCreate?.product?.id;
             } else {
+                console.log(`   ✨ Syncing existing Saleor Product: "${cleanTitle}"`);
                 await saleorFetch(`mutation Update($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field message}}}`, {
                     id: finalProductId,
                     input: {
@@ -301,7 +309,7 @@ export const woocommerceProductSync = task({
                 await processImage(finalProductId, p.images[0].src, p.name);
             }
 
-            // Variants Synchronization (Exact Shopify structural mirrored)
+            // 5. Variants Replacement & Sync (Literal Port from Shopify script line 368)
             let wcVariations = [];
             if (p.type === 'variable') {
                 const vRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/products/${p.id}/variations`, { headers: wcHeaders });
@@ -338,10 +346,13 @@ export const woocommerceProductSync = task({
                     sku: sku,
                     name: v.attributes?.map((a: any) => a.option).join(' / ') || "Default",
                     externalReference: v.id.toString(),
-                    attributes: [], // STAMP: Explicit empty array
+                    attributes: [], // Literal Port: Strict empty array
                     trackInventory: true,
                     stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity }] : []
                 };
+
+                // Deep Log BEFORE sending to verify JSON structure
+                console.log("      🔍 Variant Input Pre-flight:", JSON.stringify(varInput, null, 2));
 
                 const varRes = await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
                     input: varInput
@@ -362,6 +373,6 @@ export const woocommerceProductSync = task({
             }
         }));
 
-        console.log(`✅ ${products.length} products synced.`);
+        console.log(`✅ ${products.length} WooCommerce products synced successfully.`);
     }
 });
