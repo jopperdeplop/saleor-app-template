@@ -168,12 +168,29 @@ export const lightspeedProductSync = task({
         // --- 3. FETCH DATA FROM LIGHTSPEED ---
 
         console.log(`   📡 Connecting to Lightspeed: ${domainPrefix}`);
+
+        // A. Fetch Products
         const lsProductRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/products`, {
             headers: { 'Authorization': `Bearer ${integration.accessToken}` }
         });
-
-        if (!lsProductRes.ok) throw new Error(`Lightspeed API Error: ${lsProductRes.status}`);
+        if (!lsProductRes.ok) throw new Error(`Lightspeed Products API Error: ${lsProductRes.status}`);
         const lsProductData = await lsProductRes.json();
+
+        // B. Fetch Inventory (API 2.0 requires separate call)
+        console.log(`   📦 Fetching Inventory Records...`);
+        const lsInventoryRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/inventory`, {
+            headers: { 'Authorization': `Bearer ${integration.accessToken}` }
+        });
+        if (!lsInventoryRes.ok) throw new Error(`Lightspeed Inventory API Error: ${lsInventoryRes.status}`);
+        const lsInventoryData = await lsInventoryRes.json();
+
+        // C. Create Inventory Map
+        const inventoryMap = new Map<string, number>();
+        lsInventoryData.data?.forEach((inv: any) => {
+            const current = inventoryMap.get(inv.product_id) || 0;
+            inventoryMap.set(inv.product_id, current + parseFloat(inv.inventory_level?.toString() || "0"));
+        });
+
         const rawProducts = lsProductData.data || [];
 
         // Filter out "Discount" or system items
@@ -245,16 +262,8 @@ export const lightspeedProductSync = task({
                 const existingVar = varFind.data?.product?.variants?.find((ev: any) => ev.externalReference === v.id);
 
                 // --- 📦 INVENTORY CALCULATION ---
-                // Sum up inventory count from all outlets
-                let totalStock = 0;
-                if (Array.isArray(v.inventory)) {
-                    totalStock = v.inventory.reduce((sum: number, inv: any) => sum + (parseFloat(inv.count?.toString() || "0")), 0);
-                } else if (v.inventory_quantity !== undefined) {
-                    totalStock = parseFloat(v.inventory_quantity.toString());
-                } else if (v.count !== undefined) {
-                    totalStock = parseFloat(v.count.toString());
-                }
-
+                // Fetch total stock from map (summed across outlets)
+                const totalStock = inventoryMap.get(v.id) || 0;
                 console.log(`      📦 Variant ${v.sku || v.id} Stock: ${totalStock}`);
 
                 const varInput = {
@@ -289,7 +298,7 @@ export const lightspeedProductSync = task({
                 if (variantId) {
                     // --- 💰 PRICING ---
                     // X-Series uses 'price' (retail) and 'supply_price' (cost)
-                    const retailPrice = parseFloat(v.price?.toString() || v.retail_price?.toString() || "0");
+                    const retailPrice = parseFloat(v.price_including_tax?.toString() || v.retail_price?.toString() || v.price?.toString() || "0");
                     const costPrice = parseFloat(v.supply_price?.toString() || "0");
 
                     console.log(`      💰 Variant ${v.sku || v.id} Price: ${retailPrice}, Cost: ${costPrice}`);
