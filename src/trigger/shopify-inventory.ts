@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID;
 
-// Helper: Addressing for Warehouse (Copied from product-sync for consistency)
+// Helper: Addressing for Warehouse
 const DEFAULT_VENDOR_ADDRESS = {
     firstName: "Logistics",
     lastName: "Manager",
@@ -28,9 +28,7 @@ export const shopifyInventoryScheduledSync = schedules.task({
             where: eq(integrations.status, "active")
         });
 
-        // ONLY trigger for Shopify stores. WooCommerce will have its own scheduled task.
         const shopifyStores = activeIntegrations.filter(i => i.provider === "shopify");
-
         logger.info(`⏰ Scheduled Shopify Sync: Found ${shopifyStores.length} stores.`);
 
         for (const integration of shopifyStores) {
@@ -41,7 +39,6 @@ export const shopifyInventoryScheduledSync = schedules.task({
 
 /**
  * CHILD TASK: Syncs inventory for a specific Shopify store.
- * Supports partial sync via 'since' parameter (ISO date string).
  */
 export const shopifyInventorySync = task({
     id: "shopify-inventory-sync",
@@ -52,20 +49,19 @@ export const shopifyInventorySync = task({
             where: eq(integrations.id, payload.integrationId)
         });
 
-        if (!integration) {
-            const all = await db.query.integrations.findMany({ columns: { id: true, provider: true, storeUrl: true } });
-            logger.error(`❌ Integration ${payload.integrationId} not found.`);
-            throw new Error(`Integration ID ${payload.integrationId} not found.`);
-        }
-
-        if (integration.provider !== "shopify") {
-            logger.warn(`⚠️ Integration ${payload.integrationId} is not a Shopify provider (${integration.provider}). skipping.`);
+        if (!integration || integration.provider !== "shopify") {
+            logger.error(`❌ Integration ${payload.integrationId} not found or not Shopify.`);
             return;
         }
 
         const apiUrl = process.env.SALEOR_API_URL;
         let saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
+
+        // --- 🩺 TOKEN VERIFICATION (MASKED) ---
         if (saleorToken) {
+            const start = saleorToken.substring(0, 5);
+            const end = saleorToken.substring(saleorToken.length - 5);
+            logger.info(`🔑 [SECURITY] Using Saleor Token: ${start}...${end} (Length: ${saleorToken.length})`);
             saleorToken = `Bearer ${saleorToken.replace(/^bearer\s+/i, "")}`;
         }
 
@@ -77,12 +73,23 @@ export const shopifyInventorySync = task({
         };
 
         const saleorFetch = async (query: string, variables: any = {}) => {
-            const res = await fetch(apiUrl, {
-                method: 'POST',
-                headers: saleorHeaders,
-                body: JSON.stringify({ query, variables })
-            });
-            return await res.json();
+            try {
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: saleorHeaders,
+                    body: JSON.stringify({ query, variables })
+                });
+                const json: any = await res.json();
+                if (json.errors) {
+                    const isSchemaError = json.errors[0]?.message?.includes("Cannot query field");
+                    if (isSchemaError) logger.error("   ❌ Saleor Schema Error:", json.errors[0].message);
+                    else logger.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
+                }
+                return json;
+            } catch (e) {
+                logger.error("   ❌ Network Error during Saleor Request:", e);
+                return {};
+            }
         };
 
         // 1. Fetch Shopify Inventory
@@ -118,16 +125,35 @@ export const shopifyInventorySync = task({
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            logger.info(`🏭 Creating Warehouse for: "${vendorName}"`);
-            const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, {
-                input: {
-                    name: `${vendorName} Warehouse`,
-                    slug: `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-                    address: DEFAULT_VENDOR_ADDRESS,
-                    email: "vendor@example.com"
+            logger.info(`🏭 Attempting Warehouse Creation for: "${vendorName}"`);
+            const inputs = {
+                name: `${vendorName} Warehouse`,
+                slug: `vendor-${vendorName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                address: DEFAULT_VENDOR_ADDRESS,
+                email: "vendor@example.com"
+            };
+
+            // Smart Retry Logic
+            let createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            if (!createRes.data?.warehouseCreate && createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\"")) {
+                logger.info("   🔄 'warehouseCreate' mismatch. Retrying with 'createWarehouse'...");
+                createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            }
+
+            const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;
+            const newId = result?.warehouse?.id;
+
+            if (newId) {
+                logger.info(`   ✅ Warehouse Created: ${newId}`);
+                // Link to channels
+                for (const ch of channels) {
+                    await saleorFetch(`mutation UpdCh($id:ID!,$input:ChannelUpdateInput!){channelUpdate(id:$id,input:$input){errors{field}}}`, { id: ch.id, input: { addWarehouses: [newId] } });
                 }
-            });
-            return createRes.data?.warehouseCreate?.warehouse?.id || DEFAULT_WAREHOUSE_ID;
+                return newId;
+            }
+
+            logger.warn(`   ❌ Warehouse Creation failed. Falling back to: ${DEFAULT_WAREHOUSE_ID}`);
+            return DEFAULT_WAREHOUSE_ID;
         };
 
         // 3. Process Inventory Updates
@@ -135,23 +161,13 @@ export const shopifyInventorySync = task({
 
         for (const pEdge of products) {
             const sp = pEdge.node;
-            if (!sp || !sp.title) {
-                logger.warn("⚠️ Found product edge without node or title. Skipping.");
-                continue;
-            }
+            if (!sp || !sp.title) continue;
 
             const warehouseId = await getWarehouseId(sp.vendor || "Default");
-            if (!warehouseId) {
-                logger.warn(`⚠️ Could not determine warehouse for ${sp.title}. Skipping.`);
-                continue;
-            }
+            if (!warehouseId) continue;
 
             const cleanTitle = sp.title.trim();
-            const predictableSlug = cleanTitle.toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-+|-+$/g, '');
-
-            logger.info(`   📦 Checking Saleor for product: "${cleanTitle}" (Slug: ${predictableSlug})`);
+            const predictableSlug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
             let saleorProd: any = null;
             const slugRes = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id name variants{id name sku}}}`, { s: predictableSlug });
@@ -162,41 +178,24 @@ export const shopifyInventorySync = task({
                 saleorProd = searchRes.data?.products?.edges?.find((e: any) => e.node.name?.trim() === cleanTitle)?.node;
             }
 
-            if (!saleorProd) {
-                logger.warn(`      ⚠️ Product not found in Saleor: "${cleanTitle}"`);
-                continue;
-            }
+            if (!saleorProd) continue;
 
             // Sync Variants
             const variants = sp.variants?.edges || [];
             for (const vEdge of variants) {
                 const sv = vEdge.node;
-                if (!sv || !sv.id) {
-                    logger.warn(`      ⚠️ Shopify variant missing ID for ${cleanTitle}. Skipping variant.`);
-                    continue;
-                }
-
-                const shopifyId = sv.id.split('/').pop();
-                if (!shopifyId) {
-                    logger.warn(`      ⚠️ Could not extract numerical ID from Shopify GID: ${sv.id}. Skipping.`);
-                    continue;
-                }
+                const shopifyId = sv.id ? sv.id.split('/').pop() : null;
+                if (!shopifyId) continue;
 
                 const saleorVar = saleorProd.variants?.find((ev: any) => ev.sku === shopifyId);
-
                 if (saleorVar) {
                     const upRes = await saleorFetch(`mutation UpdStock($id:ID!,$stocks:[StockInput!]!){productVariantStocksUpdate(variantId:$id,stocks:$stocks){errors{field message}}}`, {
                         id: saleorVar.id,
                         stocks: [{ warehouse: warehouseId, quantity: sv.inventoryQuantity || 0 }]
                     });
-
-                    if (upRes.data?.productVariantStocksUpdate?.errors?.length > 0) {
-                        logger.error(`      ❌ Stock Update Failed for "${cleanTitle}" - SKU ${shopifyId}:`, upRes.data.productVariantStocksUpdate.errors);
-                    } else {
+                    if (!upRes.data?.productVariantStocksUpdate?.errors?.length) {
                         logger.info(`      ✅ Stock Updated: "${cleanTitle}" - SKU ${shopifyId} -> ${sv.inventoryQuantity}`);
                     }
-                } else {
-                    logger.warn(`      ⚠️ Variant SKU ${shopifyId} not found in Saleor for "${cleanTitle}".`);
                 }
             }
         }
@@ -204,4 +203,3 @@ export const shopifyInventorySync = task({
         logger.info(`✅ Inventory Sync Complete for ${integration.storeUrl}`);
     }
 });
-

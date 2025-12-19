@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V4-1458";
+const SYNC_VERSION = "LITERAL-CLONE-V5-1610";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -72,7 +72,7 @@ export const woocommerceProductSync = task({
             'Content-Type': 'application/json'
         };
 
-        // Helper: Centralized Fetch (ABSOLUTE CLONE FROM SHOPIFY SCRIPT)
+        // Helper: Centralized Fetch (SMART VERSION)
         const saleorFetch = async (query: string, variables: any = {}) => {
             try {
                 const res = await fetch(apiUrl, {
@@ -86,7 +86,12 @@ export const woocommerceProductSync = task({
                 }
                 const json: any = await res.json();
                 if (json.errors) {
-                    console.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
+                    const isSchemaError = json.errors[0]?.message?.includes("Cannot query field");
+                    if (isSchemaError) {
+                        console.error("   ❌ Saleor Schema Error:", json.errors[0].message);
+                    } else {
+                        console.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
+                    }
                 }
                 return json;
             } catch (e) {
@@ -122,7 +127,7 @@ export const woocommerceProductSync = task({
         const products = await wcRes.json();
         console.log(`   📦 Fetched ${products.length} products.`);
 
-        // --- 3. CORE SYNC FUNCTIONS (Matched to Shopify Script) ---
+        // --- 3. CORE SYNC FUNCTIONS (RESILIENT VERSION) ---
 
         const getSaleorChannels = async () => {
             const query = `{ channels { id slug currencyCode isActive } }`;
@@ -164,17 +169,25 @@ export const woocommerceProductSync = task({
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            console.log(`   🏭 Creating Warehouse for: "${vendorName}"`);
-            const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message code}}}`, {
-                input: {
-                    name: `${vendorName} Warehouse`,
-                    slug: slug,
-                    address: DEFAULT_VENDOR_ADDRESS,
-                    email: "vendor@example.com"
-                }
-            });
+            console.log(`   🏭 Attempting Warehouse Creation for: "${vendorName}"`);
+            const inputs = {
+                name: `${vendorName} Warehouse`,
+                slug: slug,
+                address: DEFAULT_VENDOR_ADDRESS,
+                email: "vendor@example.com"
+            };
 
-            const result = createRes.data?.warehouseCreate;
+            // Attempt 1: warehouseCreate (Modern 3.x)
+            let createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+
+            // Check if Attempt 1 failed specifically because the field is missing
+            if (!createRes.data?.warehouseCreate && createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\"")) {
+                console.log("   🔄 'warehouseCreate' not found in schema. Retrying with 'createWarehouse'...");
+                createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            }
+
+            const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;
+
             if (result?.errors?.length > 0) {
                 if (result.errors.some((e: any) => e.field === 'slug')) {
                     const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id slug}}}}`, { s: slug });
@@ -187,11 +200,12 @@ export const woocommerceProductSync = task({
 
             const newId = result?.warehouse?.id;
             if (newId) {
+                console.log(`   ✅ Warehouse Created: ${newId}`);
                 // Link to Channels
                 for (const ch of channels) {
                     await saleorFetch(`mutation UpdCh($id:ID!,$input:ChannelUpdateInput!){channelUpdate(id:$id,input:$input){errors{field}}}`, { id: ch.id, input: { addWarehouses: [newId] } });
                 }
-                // Link to Shipping Zone (Mirroring script "Europe" / "Global")
+                // Link to Shipping Zone
                 const zoneId = await getOrCreateShippingZone("Europe");
                 if (zoneId) {
                     await saleorFetch(`mutation UpdZone($id:ID!,$input:ShippingZoneUpdateInput!){shippingZoneUpdate(id:$id,input:$input){errors{field}}}`, { id: zoneId, input: { addWarehouses: [newId] } });
@@ -261,12 +275,10 @@ export const woocommerceProductSync = task({
         console.log(`📦 Parallel Sync for ${products.length} products...`);
 
         await Promise.all(products.map(async (p: any) => {
-            // 1. Warehouse & Brand
             const brandPageId = await getOrCreateBrandPage(storeName);
             let targetWarehouseId = await getOrCreateWarehouse(storeName, channels);
             if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
 
-            // 2. Find or Create Product
             let finalProductId: string | null = null;
             const cleanTitle = p.name.trim();
             const predictableSlug = p.slug || cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -298,7 +310,6 @@ export const woocommerceProductSync = task({
 
             if (!finalProductId) return;
 
-            // 2.1 Assign Brand Attribute
             if (brandPageId && BRAND_ATTRIBUTE_ID) {
                 await saleorFetch(`mutation UpdateProd($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field message}}}`, {
                     id: finalProductId,
@@ -306,7 +317,6 @@ export const woocommerceProductSync = task({
                 });
             }
 
-            // 3. Channel Listing
             const dateStr = new Date().toISOString().split('T')[0];
             const channelListings = channels.map((ch: any) => ({
                 channelId: ch.id,
@@ -321,12 +331,10 @@ export const woocommerceProductSync = task({
                 input: { updateChannels: channelListings }
             });
 
-            // 4. Image
             if (p.images && p.images.length > 0) {
                 await processImage(finalProductId, p.images[0].src, p.name);
             }
 
-            // 5. Variants Replacement & Sync
             let wcVariations = [];
             if (p.type === 'variable') {
                 const vRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/products/${p.id}/variations`, { headers: wcHeaders });
@@ -346,8 +354,7 @@ export const woocommerceProductSync = task({
             const existingVarData = await saleorFetch(`query GetVars($id:ID!){product(id:$id){variants{id sku}}}`, { id: finalProductId });
             const existingVariants = existingVarData.data?.product?.variants || [];
             if (existingVariants.length > 0) {
-                const varIdsToDelete = existingVariants.map((v: any) => v.id);
-                await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: varIdsToDelete });
+                await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: existingVariants.map((v: any) => v.id) });
             }
 
             for (const v of wcVariations) {
@@ -368,7 +375,6 @@ export const woocommerceProductSync = task({
                     }
                 });
                 const variantId = varRes.data?.productVariantCreate?.productVariant?.id;
-
                 if (variantId) {
                     const priceListings = channels.map((ch: any) => ({
                         channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")

@@ -56,6 +56,13 @@ export const shopifyProductSync = task({
 
         if (!apiUrl || !saleorToken) throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
 
+        // --- 🩺 TOKEN VERIFICATION (MASKED) ---
+        if (saleorToken) {
+            const start = saleorToken.substring(0, 5);
+            const end = saleorToken.substring(saleorToken.length - 5);
+            console.log(`🔑 [SECURITY] Using Saleor Token: ${start}...${end} (Length: ${saleorToken.length})`);
+        }
+
         const saleorHeaders = {
             'Authorization': saleorToken,
             'Content-Type': 'application/json'
@@ -75,7 +82,13 @@ export const shopifyProductSync = task({
                 }
                 const json: any = await res.json();
                 if (json.errors) {
-                    console.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
+                    // Specific check for schema errors to log available fields
+                    const isSchemaError = json.errors[0]?.message?.includes("Cannot query field");
+                    if (isSchemaError) {
+                        console.error("   ❌ Saleor Schema Error:", json.errors[0].message);
+                    } else {
+                        console.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
+                    }
                 }
                 return json;
             } catch (e) {
@@ -155,17 +168,27 @@ export const shopifyProductSync = task({
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            console.log(`   🏭 Creating Warehouse for: "${vendorName}"`);
-            const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message code}}}`, {
-                input: {
-                    name: `${vendorName} Warehouse`,
-                    slug: slug,
-                    address: DEFAULT_VENDOR_ADDRESS,
-                    email: "vendor@example.com"
-                }
-            });
+            console.log(`   🏭 Attempting Warehouse Creation for: "${vendorName}"`);
 
-            const result = createRes.data?.warehouseCreate;
+            // --- RESILIENT MUTATION LOGIC ---
+            const inputs = {
+                name: `${vendorName} Warehouse`,
+                slug: slug,
+                address: DEFAULT_VENDOR_ADDRESS,
+                email: "vendor@example.com"
+            };
+
+            // Attempt 1: warehouseCreate (Modern 3.x)
+            let createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+
+            // Check if Attempt 1 failed specifically because the field is missing
+            if (!createRes.data?.warehouseCreate && createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\"")) {
+                console.log("   🔄 'warehouseCreate' not found in schema. Retrying with 'createWarehouse'...");
+                createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            }
+
+            const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;
+
             if (result?.errors?.length > 0) {
                 if (result.errors.some((e: any) => e.field === 'slug')) {
                     const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id slug}}}}`, { s: slug });
@@ -178,11 +201,12 @@ export const shopifyProductSync = task({
 
             const newId = result?.warehouse?.id;
             if (newId) {
+                console.log(`   ✅ Warehouse Created: ${newId}`);
                 // Link to Channels
                 for (const ch of channels) {
                     await saleorFetch(`mutation UpdCh($id:ID!,$input:ChannelUpdateInput!){channelUpdate(id:$id,input:$input){errors{field}}}`, { id: ch.id, input: { addWarehouses: [newId] } });
                 }
-                // Link to Shipping Zone (Mirroring script "Europe" / "Global")
+                // Link to Shipping Zone
                 const zoneId = await getOrCreateShippingZone("Europe");
                 if (zoneId) {
                     await saleorFetch(`mutation UpdZone($id:ID!,$input:ShippingZoneUpdateInput!){shippingZoneUpdate(id:$id,input:$input){errors{field}}}`, { id: zoneId, input: { addWarehouses: [newId] } });
