@@ -178,9 +178,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Logic Match: If no SKU in Shopify, construct the "IMP-{ID}" SKU 
     // This matches the logic in 'shopify-product-lifecycle.ts'
     if (!targetSku && details.id) {
-      const legacyId = details.id.split('/').pop(); // Extract "12345" from "gid://.../12345"
-      targetSku = `IMP-${legacyId}`;
-      console.log(`   ℹ️  No SKU in Shopify. Using generated SKU: "${targetSku}"`);
+      const legacyId = details.id ? details.id.split('/').pop() : null; // Extract "12345" from "gid://.../12345"
+      targetSku = legacyId ? `IMP-${legacyId}` : null;
+      if (targetSku) console.log(`   ℹ️  No SKU in Shopify. Using generated SKU: "${targetSku}"`);
     }
 
     if (!targetSku) {

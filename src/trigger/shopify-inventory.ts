@@ -169,6 +169,7 @@ export const shopifyInventorySync = task({
 
                 // Find matching Saleor Variant by SKU (which is the Shopify ID)
                 const saleorVar = saleorProd.variants.find((ev: any) => {
+                    if (!sv.id) return false;
                     const shopifyId = sv.id.split('/').pop();
                     return ev.sku === shopifyId;
                 });

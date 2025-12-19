@@ -144,7 +144,7 @@ async function createMirrorOrderOnShopify(integration: any, order: any, lines: a
     const payload = {
         order: {
             line_items: lines.map(l => ({
-                variant_id: l.variant.externalReference?.split('/').pop() || l.variant.sku,
+                variant_id: l.variant.externalReference ? l.variant.externalReference.split('/').pop() : l.variant.sku,
                 quantity: l.quantity,
                 title: l.productName
             })),
