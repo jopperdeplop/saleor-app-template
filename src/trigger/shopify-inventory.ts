@@ -1,4 +1,4 @@
-import { schedules, task, tasks } from "@trigger.dev/sdk";
+import { schedules, task, tasks, logger } from "@trigger.dev/sdk";
 import { db } from "../db";
 import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -31,7 +31,7 @@ export const shopifyInventoryScheduledSync = schedules.task({
         // ONLY trigger for Shopify stores. WooCommerce will have its own scheduled task.
         const shopifyStores = activeIntegrations.filter(i => i.provider === "shopify");
 
-        console.log(`⏰ Scheduled Shopify Sync: Found ${shopifyStores.length} stores.`);
+        logger.info(`⏰ Scheduled Shopify Sync: Found ${shopifyStores.length} stores.`);
 
         for (const integration of shopifyStores) {
             await shopifyInventorySync.trigger({ integrationId: integration.id });
@@ -46,7 +46,7 @@ export const shopifyInventoryScheduledSync = schedules.task({
 export const shopifyInventorySync = task({
     id: "shopify-inventory-sync",
     run: async (payload: { integrationId: number, since?: string }) => {
-        console.log(`🔍 Received Sync Request for Integration ID: ${payload.integrationId}`);
+        logger.info(`🔍 Received Sync Request for Integration ID: ${payload.integrationId}`);
 
         const integration = await db.query.integrations.findFirst({
             where: eq(integrations.id, payload.integrationId)
@@ -54,13 +54,12 @@ export const shopifyInventorySync = task({
 
         if (!integration) {
             const all = await db.query.integrations.findMany({ columns: { id: true, provider: true, storeUrl: true } });
-            console.error(`❌ Integration ${payload.integrationId} not found.`);
-            console.log("   Available Integrations in DB:", JSON.stringify(all, null, 2));
-            throw new Error(`Integration ID ${payload.integrationId} not found. Please check your Trigger.dev payload and use a valid ID from the list above.`);
+            logger.error(`❌ Integration ${payload.integrationId} not found.`);
+            throw new Error(`Integration ID ${payload.integrationId} not found.`);
         }
 
         if (integration.provider !== "shopify") {
-            console.warn(`⚠️ Integration ${payload.integrationId} is not a Shopify provider (${integration.provider}). skipping.`);
+            logger.warn(`⚠️ Integration ${payload.integrationId} is not a Shopify provider (${integration.provider}). skipping.`);
             return;
         }
 
@@ -87,11 +86,12 @@ export const shopifyInventorySync = task({
         };
 
         // 1. Fetch Shopify Inventory
-        // Mirroring shopify-products.ts logic: Only sync active products with stock.
         const baseFilter = "status:active AND inventory_total:>0";
         const filter = payload.since ? `${baseFilter} AND updated_at:>=${payload.since}` : baseFilter;
 
-        const shopifyQuery = `{ products(first:50, query: "${filter}") { edges { node { title vendor variants(first:50){edges{node{title sku inventoryQuantity}}} } } } }`;
+        const shopifyQuery = `{ products(first:50, query: "${filter}") { edges { node { id title vendor variants(first:50){edges{node{id title sku inventoryQuantity}}} } } } }`;
+
+        logger.info(`📡 Connecting to Shopify for ${integration.storeUrl}...`);
 
         const shopifyRes = await fetch(`https://${integration.storeUrl}/admin/api/2024-04/graphql.json`, {
             method: 'POST',
@@ -105,7 +105,7 @@ export const shopifyInventorySync = task({
         const products = shopifyJson.data?.products?.edges || [];
 
         if (products.length === 0) {
-            console.log(payload.since ? `✨ No recent changes found since ${payload.since} (using strict filter).` : "Empty Shopify catalog or no active stock found.");
+            logger.info(payload.since ? `✨ No recent changes found since ${payload.since}.` : "Empty Shopify catalog or no active stock found.");
             return;
         }
 
@@ -113,13 +113,12 @@ export const shopifyInventorySync = task({
         const channelsRes = await saleorFetch(`{ channels { id slug } }`);
         const channels = channelsRes.data?.channels || [];
 
-        // Helper to find/create warehouse
         const getWarehouseId = async (vendorName: string) => {
             const find = await saleorFetch(`query Find($s:String!){warehouses(filter:{search:$s},first:1){edges{node{id slug}}}}`, { s: vendorName });
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            console.log(`🏭 Creating Warehouse for: "${vendorName}"`);
+            logger.info(`🏭 Creating Warehouse for: "${vendorName}"`);
             const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, {
                 input: {
                     name: `${vendorName} Warehouse`,
@@ -132,65 +131,77 @@ export const shopifyInventorySync = task({
         };
 
         // 3. Process Inventory Updates
-        console.log(`🔄 Deterministic Sync for ${products.length} products ${payload.since ? `(Changes since ${payload.since})` : "..."}`);
+        logger.info(`🔄 Deterministic Sync for ${products.length} products...`);
 
-        await Promise.all(products.map(async (pEdge: any) => {
+        for (const pEdge of products) {
             const sp = pEdge.node;
-            const warehouseId = await getWarehouseId(sp.vendor);
-            if (!warehouseId) return;
+            if (!sp || !sp.title) {
+                logger.warn("⚠️ Found product edge without node or title. Skipping.");
+                continue;
+            }
 
-            // A. Generate Predictable Slug (Exactly as in shopify-products.ts)
+            const warehouseId = await getWarehouseId(sp.vendor || "Default");
+            if (!warehouseId) {
+                logger.warn(`⚠️ Could not determine warehouse for ${sp.title}. Skipping.`);
+                continue;
+            }
+
             const cleanTitle = sp.title.trim();
             const predictableSlug = cleanTitle.toLowerCase()
                 .replace(/[^a-z0-9]+/g, '-')
                 .replace(/^-+|-+$/g, '');
 
-            // B. Find Saleor Product
-            let saleorProd: any = null;
+            logger.info(`   📦 Checking Saleor for product: "${cleanTitle}" (Slug: ${predictableSlug})`);
 
-            // Step 1: Lookup by Slug (Deterministic & Fastest)
+            let saleorProd: any = null;
             const slugRes = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id name variants{id name sku}}}`, { s: predictableSlug });
             saleorProd = slugRes.data?.product;
 
-            // Step 2: Fallback to Search (In case slug changed or was manually set)
             if (!saleorProd) {
                 const searchRes = await saleorFetch(`query FindProd($n:String!){products(filter:{search:$n},first:20){edges{node{id name variants{id name sku}}}}}`, { n: cleanTitle });
                 saleorProd = searchRes.data?.products?.edges?.find((e: any) => e.node.name?.trim() === cleanTitle)?.node;
             }
 
             if (!saleorProd) {
-                console.warn(`      ⚠️ Product not found in Saleor: "${cleanTitle}" (Tried Slug: ${predictableSlug})`);
-                return;
+                logger.warn(`      ⚠️ Product not found in Saleor: "${cleanTitle}"`);
+                continue;
             }
 
-            // C. Map Variants by Name
-            for (const vEdge of sp.variants.edges) {
+            // Sync Variants
+            const variants = sp.variants?.edges || [];
+            for (const vEdge of variants) {
                 const sv = vEdge.node;
+                if (!sv || !sv.id) {
+                    logger.warn(`      ⚠️ Shopify variant missing ID for ${cleanTitle}. Skipping variant.`);
+                    continue;
+                }
 
-                // Find matching Saleor Variant by SKU (which is the Shopify ID)
-                const saleorVar = saleorProd.variants.find((ev: any) => {
-                    if (!sv.id) return false;
-                    const shopifyId = sv.id.split('/').pop();
-                    return ev.sku === shopifyId;
-                });
+                const shopifyId = sv.id.split('/').pop();
+                if (!shopifyId) {
+                    logger.warn(`      ⚠️ Could not extract numerical ID from Shopify GID: ${sv.id}. Skipping.`);
+                    continue;
+                }
+
+                const saleorVar = saleorProd.variants?.find((ev: any) => ev.sku === shopifyId);
 
                 if (saleorVar) {
                     const upRes = await saleorFetch(`mutation UpdStock($id:ID!,$stocks:[StockInput!]!){productVariantStocksUpdate(variantId:$id,stocks:$stocks){errors{field message}}}`, {
                         id: saleorVar.id,
-                        stocks: [{ warehouse: warehouseId, quantity: sv.inventoryQuantity }]
+                        stocks: [{ warehouse: warehouseId, quantity: sv.inventoryQuantity || 0 }]
                     });
 
                     if (upRes.data?.productVariantStocksUpdate?.errors?.length > 0) {
-                        console.error(`      ❌ Stock Update Failed for "${cleanTitle}" - "${sv.title}":`, JSON.stringify(upRes.data.productVariantStocksUpdate.errors));
+                        logger.error(`      ❌ Stock Update Failed for "${cleanTitle}" - SKU ${shopifyId}:`, upRes.data.productVariantStocksUpdate.errors);
                     } else {
-                        console.log(`      ✅ Stock Updated: "${cleanTitle}" - "${sv.title}" -> ${sv.inventoryQuantity}`);
+                        logger.info(`      ✅ Stock Updated: "${cleanTitle}" - SKU ${shopifyId} -> ${sv.inventoryQuantity}`);
                     }
                 } else {
-                    console.warn(`      ⚠️ Variant not found for "${cleanTitle}": "${sv.title}" (Options: ${saleorProd.variants.map((v: any) => v.name || "Default").join(", ")})`);
+                    logger.warn(`      ⚠️ Variant SKU ${shopifyId} not found in Saleor for "${cleanTitle}".`);
                 }
             }
-        }));
+        }
 
-        console.log(`✅ Inventory Sync Complete for ${integration.storeUrl}`);
+        logger.info(`✅ Inventory Sync Complete for ${integration.storeUrl}`);
     }
 });
+
