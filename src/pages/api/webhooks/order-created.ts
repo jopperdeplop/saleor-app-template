@@ -21,46 +21,34 @@ export const orderCreatedWebhook = new SaleorAsyncWebhook<OrderCreatedWebhookPay
   query: OrderCreatedSubscriptionDocument,
 });
 
-// export default orderCreatedWebhook.createHandler(async (req, res, ctx) => {
-//   const { payload } = ctx;
+// This handler automatically verifies the Saleor-Signature header
+export default orderCreatedWebhook.createHandler(async (req, res, ctx) => {
+  const { payload } = ctx;
 
-export default async function handler(req: any, res: any) {
-  console.log("⚡ INCOMING WEBHOOK BODY:", JSON.stringify(req.body, null, 2));
-  const payload = req.body;
+  console.log("⚡ [Saleor Webhook] Verified Order Created:", payload.order?.id);
 
-  // Try all possible paths
-  const order = payload.order ||
-    payload.event?.order ||
-    payload.data?.event?.order ||
-    payload.data?.order; // Just in case
+  const order = payload.order;
 
   if (order && order.id) {
-    console.log(`✅ EXTRACTED ORDER ID: ${order.id} (Number: ${order.number})`);
-    console.log(`🚚 Triggering shipping label generation...`);
     try {
       // Use Order ID as idempotency key to prevent duplicate runs
-      const handle = await automateMultiVendorFulfillment.trigger({ orderId: order.id }, { idempotencyKey: order.id });
-      console.log(`   🚀 Task Triggered! Handle ID: ${handle.id} (Idempotency Key: ${order.id})`);
+      const handle = await automateMultiVendorFulfillment.trigger(
+        { orderId: order.id },
+        { idempotencyKey: order.id }
+      );
+      console.log(`   🚀 [Saleor Webhook] Task Triggered! Handle ID: ${handle.id}`);
+      return res.status(200).json({ success: true });
     } catch (e) {
-      console.error("   ❌ Failed to trigger task:", e);
+      console.error("   ❌ [Saleor Webhook] Trigger failed:", e);
+      return res.status(500).json({ error: "Trigger failed" });
     }
-  } else {
-    console.warn("❌ COULD NOT EXTRACT ORDER. Payload keys:", Object.keys(payload));
-    if (payload.event) console.log("   payload.event keys:", Object.keys(payload.event));
   }
 
-  /**
-   * Inform Saleor that webhook was delivered properly.
-   */
-  res.status(200).end();
-  return;
-}
+  res.status(400).json({ error: "Missing order data" });
+});
 
-/**
- * Disable body parser for this endpoint, so signature can be verified
- */
 export const config = {
   api: {
-    bodyParser: true,
+    bodyParser: false, // Must be false for signature verification
   },
 };

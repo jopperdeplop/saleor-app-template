@@ -99,6 +99,11 @@ async function updateSaleorStock(sku: string, quantity: number) {
   return true;
 }
 
+import { db } from '@/db';
+import { integrations } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { decrypt } from '@/lib/encryption';
+
 // --- MAIN HANDLER ---
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -107,18 +112,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    console.log("\n⚡ WEBHOOK RECEIVED: Inventory Update");
-
     const rawBody = await getRawBody(req);
     const hmacHeader = req.headers['x-shopify-hmac-sha256'];
-    const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+    const shopDomain = req.headers['x-shopify-shop-domain'];
 
-    if (secret) {
+    console.log(`\n⚡ WEBHOOK RECEIVED: Inventory Update | Shop: ${shopDomain}`);
+
+    // 1. Secret Resolution (Global -> Dynamic DB)
+    let secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+
+    if (!secret && shopDomain) {
+      try {
+        if (!process.env.POSTGRES_URL) {
+          console.warn("⚠️ [Inventory Webhook] POSTGRES_URL missing. Skipping dynamic lookup.");
+        } else {
+          const results = await db.select()
+            .from(integrations)
+            .where(eq(integrations.storeUrl, shopDomain.toString().toLowerCase()))
+            .limit(1);
+
+          const integration = results[0];
+          const settings = integration?.settings as any;
+          const candidateSecret = settings?.webhookSecret;
+
+          if (candidateSecret) {
+            if (candidateSecret.includes(':')) {
+              try {
+                secret = decrypt(candidateSecret);
+                console.info(`✅ [Inventory Webhook] Verified using decrypted secret for ${shopDomain}`);
+              } catch (e) {
+                console.warn(`⚠️ [Inventory Webhook] Decryption failed. Using as plain-text.`);
+                secret = candidateSecret;
+              }
+            } else {
+              secret = candidateSecret;
+              console.info(`ℹ️ [Inventory Webhook] Using plain-text secret for ${shopDomain}`);
+            }
+          }
+        }
+      } catch (dbError: any) {
+        console.warn(`⚠️ [Inventory Webhook] DB Error: ${dbError.message}. Proceeding unverified.`);
+      }
+    }
+
+    if (secret && hmacHeader) {
       const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
       if (hash !== hmacHeader) {
         console.error("   ⛔ Security Alert: Invalid Signature.");
         return res.status(401).send('Forbidden');
       }
+    } else if (!secret) {
+      console.warn(`⚠️ [Inventory Webhook] No secret found for ${shopDomain}. PROCESSING UNVERIFIED.`);
     }
 
     const payload = JSON.parse(rawBody.toString());

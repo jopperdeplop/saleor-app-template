@@ -473,6 +473,11 @@ async function ensureVariantExists(prodId: string, v: any, channels: any[]) {
     console.log(`      ✅ Variant ${sku} created.`);
 }
 
+import { db } from '@/db';
+import { integrations } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { decrypt } from '@/lib/encryption';
+
 // --- MAIN HANDLER ---
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -482,7 +487,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const rawBody = await getRawBody(req);
         const hmac = req.headers['x-shopify-hmac-sha256'];
         const topic = req.headers['x-shopify-topic'] || 'unknown';
-        const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+        const shopDomain = req.headers['x-shopify-shop-domain'];
+
+        console.log(`\n🔔 Webhook Received: ${topic} | Shop: ${shopDomain}`);
+
+        // 1. Secret Resolution (Global -> Dynamic DB)
+        let secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+
+        if (!secret && shopDomain) {
+            try {
+                if (!process.env.POSTGRES_URL) {
+                    console.warn("⚠️ [Lifecycle Webhook] POSTGRES_URL missing. Skipping dynamic lookup.");
+                } else {
+                    const results = await db.select()
+                        .from(integrations)
+                        .where(eq(integrations.storeUrl, shopDomain.toString().toLowerCase()))
+                        .limit(1);
+
+                    const integration = results[0];
+                    const settings = integration?.settings as any;
+                    const candidateSecret = settings?.webhookSecret;
+
+                    if (candidateSecret) {
+                        if (candidateSecret.includes(':')) {
+                            try {
+                                secret = decrypt(candidateSecret);
+                                console.info(`✅ [Lifecycle Webhook] Verified using decrypted secret for ${shopDomain}`);
+                            } catch (e) {
+                                console.warn(`⚠️ [Lifecycle Webhook] Decryption failed. Using as plain-text.`);
+                                secret = candidateSecret;
+                            }
+                        } else {
+                            secret = candidateSecret;
+                            console.info(`ℹ️ [Lifecycle Webhook] Using plain-text secret for ${shopDomain}`);
+                        }
+                    }
+                }
+            } catch (dbError: any) {
+                console.warn(`⚠️ [Lifecycle Webhook] DB Error: ${dbError.message}. Proceeding unverified.`);
+            }
+        }
 
         if (secret && hmac) {
             const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
@@ -490,10 +534,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 console.error("❌ Security: Invalid Signature");
                 return res.status(401).send('Forbidden');
             }
+        } else if (!secret) {
+            console.warn(`⚠️ [Lifecycle Webhook] No secret found for ${shopDomain}. PROCESSING UNVERIFIED.`);
         }
 
         const payload = JSON.parse(rawBody.toString());
-        console.log(`\n🔔 Webhook Received: ${topic}`);
 
         switch (topic) {
             case 'products/delete':
