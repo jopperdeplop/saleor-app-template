@@ -39,6 +39,8 @@ const DEFAULT_VENDOR_ADDRESS = {
 export const woocommerceProductSync = task({
     id: "woocommerce-product-sync",
     run: async (payload: { integrationId: number }) => {
+        console.log(`🚀 Starting WooCommerce Product Sync for Integration [${payload.integrationId}]`);
+
         // --- 1. SETUP & AUTH ---
         const integration = await db.query.integrations.findFirst({ where: eq(integrations.id, payload.integrationId) });
         if (!integration) throw new Error("Integration not found");
@@ -79,6 +81,7 @@ export const woocommerceProductSync = task({
             'Content-Type': 'application/json'
         };
 
+        // Helper: Centralized Fetch (Mirrors Shopify Baseline)
         const saleorFetch = async (query: string, variables: any = {}) => {
             try {
                 const res = await fetch(apiUrl, {
@@ -181,6 +184,7 @@ export const woocommerceProductSync = task({
             const existingMedia = mediaRes.data?.product?.media || [];
 
             if (existingMedia.length > 0) {
+                console.log(`      🧹 Deleting ${existingMedia.length} existing images to replace...`);
                 for (const media of existingMedia) {
                     await saleorFetch(`mutation DelMedia($id:ID!){productMediaDelete(id:$id){errors{field message}}}`, { id: media.id });
                 }
@@ -189,6 +193,7 @@ export const woocommerceProductSync = task({
             let imageBlob: Blob | null = null;
             if (PHOTOROOM_API_KEY) {
                 try {
+                    console.log(`      🧪 Sending to Photoroom for Background Removal...`);
                     const imgRes = await fetch(imageUrl);
                     if (imgRes.ok) {
                         const originalBlob = await imgRes.blob();
@@ -203,10 +208,13 @@ export const woocommerceProductSync = task({
                         });
                         if (prRes.ok) {
                             imageBlob = await prRes.blob();
+                            console.log(`      ✨ Photoroom processed successfully.`);
+                        } else {
+                            console.error(`      ❌ Photoroom Error [${prRes.status}]:`, await prRes.text());
                         }
                     }
                 } catch (e) {
-                    console.error("      ❌ Photoroom error:", e);
+                    console.error("      ❌ Photoroom Processing Exception:", e);
                 }
             }
 
@@ -219,26 +227,50 @@ export const woocommerceProductSync = task({
                 fd.append("operations", JSON.stringify(ops));
                 fd.append("map", JSON.stringify({ "0": ["variables.i"] }));
                 fd.append("0", imageBlob, "image.webp");
-                await fetch(apiUrl!, { method: 'POST', headers: { 'Authorization': saleorToken }, body: fd });
+                const res = await fetch(apiUrl!, { method: 'POST', headers: { 'Authorization': saleorToken }, body: fd });
+                const json: any = await res.json();
+                if (json.data?.productMediaCreate?.errors?.length > 0) {
+                    console.error("      ❌ Media Multipart Upload Failed:", JSON.stringify(json.data.productMediaCreate.errors));
+                } else {
+                    console.log("      ✅ Image replaced via Photoroom Blob.");
+                }
             } else {
-                await saleorFetch(`mutation AddMedia($id: ID!, $url: String!, $alt: String) { productMediaCreate(input: { product: $id, mediaUrl: $url, alt: $alt }) { media { id } errors { field message } } }`, {
+                console.log("      ℹ️ Photoroom skipped/failed. Falling back to original URL upload...");
+                const res = await saleorFetch(`mutation AddMedia($id: ID!, $url: String!, $alt: String) { productMediaCreate(input: { product: $id, mediaUrl: $url, alt: $alt }) { media { id } errors { field message } } }`, {
                     id: productId, url: imageUrl, alt: title
                 });
+                if (res.data?.productMediaCreate?.errors?.length > 0) {
+                    console.error("      ❌ Media URL Fallback Failed:", JSON.stringify(res.data.productMediaCreate.errors));
+                } else {
+                    console.log("      ✅ Image replaced via URL.");
+                }
             }
         }
 
         // --- 2. FETCH WOOCOMMERCE DATA ---
-        console.log(`   📡 Connecting to WooCommerce at ${integration.storeUrl}...`);
+        console.log(`📡 Connecting to WooCommerce at ${integration.storeUrl}...`);
         const wcResponse = await fetch(`${integration.storeUrl}/wp-json/wc/v3/products?per_page=100`, { headers: wcHeaders });
-        if (!wcResponse.ok) throw new Error(`WooCommerce API Error: ${wcResponse.status}`);
+        if (!wcResponse.ok) {
+            const errBody = await wcResponse.text();
+            throw new Error(`WooCommerce API Error (${wcResponse.status}): ${errBody}`);
+        }
         const products = await wcResponse.json();
-        console.log(`   📦 Fetched ${products.length} products.`);
+        console.log(`📦 Fetched ${products.length} products from WooCommerce.`);
 
         const channels = await getSaleorChannels();
-        if (channels.length === 0) throw new Error("No Channels found.");
+        if (channels.length === 0) throw new Error("No Channels found in Saleor.");
 
         // --- 3. PARALLEL PROCESSING ---
+        console.log(`🔄 Starting Parallel Processing for ${products.length} products...`);
+
         await Promise.all(products.map(async (p: any) => {
+            console.log(`\n🧵 Processing WooCommerce Product [ID: ${p.id}]: "${p.name}"`);
+            console.log(`   - Type: ${p.type}`);
+            console.log(`   - SKU: ${p.sku || 'N/A'}`);
+            console.log(`   - Price: ${p.price}`);
+            console.log(`   - Stock: ${p.stock_quantity ?? 'N/A'} (Status: ${p.stock_status})`);
+            console.log(`   - Media Count: ${p.images?.length || 0}`);
+
             const cleanTitle = p.name.trim();
             const predictableSlug = p.slug || cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
             const vendor = new URL(integration.storeUrl).hostname;
@@ -247,9 +279,16 @@ export const woocommerceProductSync = task({
             let targetWarehouseId = await getOrCreateWarehouse(vendor, channels);
             if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
 
-            // Find or Create Product
+            // Find or Create Product (Structural Parity with Shopify)
+            let finalProductId: string | null = null;
             const slugCheck = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id}}`, { s: predictableSlug });
-            let finalProductId = slugCheck.data?.product?.id;
+            finalProductId = slugCheck.data?.product?.id;
+
+            if (finalProductId) {
+                console.log(`   ✨ Syncing existing Saleor Product: "${cleanTitle}" (${finalProductId})`);
+            } else {
+                console.log(`   ➕ Creating new Saleor Product: "${cleanTitle}" (Slug: ${predictableSlug})`);
+            }
 
             if (!finalProductId) {
                 const createRes = await saleorFetch(`mutation Create($input:ProductCreateInput!){productCreate(input:$input){product{id} errors{field message}}}`, {
@@ -273,9 +312,12 @@ export const woocommerceProductSync = task({
                 });
             }
 
-            if (!finalProductId) return;
+            if (!finalProductId) {
+                console.error(`   ❌ Failed to find or create product for WC ID ${p.id}`);
+                return;
+            }
 
-            // Brand Attribute
+            // Assign Brand Attribute
             if (brandPageId && BRAND_ATTRIBUTE_ID) {
                 await saleorFetch(`mutation UpdateProd($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field message}}}`, {
                     id: finalProductId,
@@ -284,28 +326,39 @@ export const woocommerceProductSync = task({
             }
 
             // Channel Listing
+            const dateStr = new Date().toISOString().split('T')[0];
             const channelListings = channels.map((ch: any) => ({
                 channelId: ch.id,
                 isPublished: p.status === 'publish',
+                publicationDate: dateStr,
                 isAvailableForPurchase: true,
-                visibleInListings: true
+                visibleInListings: true,
+                availableForPurchaseAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
             }));
             await saleorFetch(`mutation UpdChannel($id:ID!,$input:ProductChannelListingUpdateInput!){productChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
                 id: finalProductId, input: { updateChannels: channelListings }
             });
 
-            // Media
+            // Media (Using First Image)
             if (p.images && p.images.length > 0) {
-                await processImage(finalProductId, p.images[0].src, p.name);
+                const imgUrl = p.images[0].src;
+                await processImage(finalProductId, imgUrl, p.name);
             }
 
-            // Variants
+            // Variants Synchronization
             let wcVariations = [];
             if (p.type === 'variable') {
+                console.log(`   📑 Fetching Variations for Variable Product [WC ID: ${p.id}]...`);
                 const vRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/products/${p.id}/variations`, { headers: wcHeaders });
-                if (vRes.ok) wcVariations = await vRes.json();
+                if (vRes.ok) {
+                    wcVariations = await vRes.json();
+                    console.log(`   📦 Found ${wcVariations.length} variations.`);
+                } else {
+                    console.error(`   ❌ Failed to fetch variations for WC ID ${p.id}`);
+                }
             } else {
-                // Simple Product treated as a single variation
+                console.log(`   🏷️ Treating simple product as single variation.`);
+                // User Requirement: Use SKU from WooCommerce (Simple Product)
                 wcVariations = [{
                     id: p.id,
                     sku: p.sku || `WC-${p.id}`,
@@ -317,15 +370,18 @@ export const woocommerceProductSync = task({
                 }];
             }
 
-            // Clean existing variants before sync
-            const existingVarData = await saleorFetch(`query GetVars($id:ID!){product(id:$id){variants{id}}}`, { id: finalProductId });
+            // --- Variants Replacement & Sync (Mirrors Shopify Baseline) ---
+            const existingVarData = await saleorFetch(`query GetVars($id:ID!){product(id:$id){variants{id sku}}}`, { id: finalProductId });
             const existingVariantIds = (existingVarData.data?.product?.variants || []).map((v: any) => v.id);
             if (existingVariantIds.length > 0) {
+                console.log(`      🧹 Deleting ${existingVariantIds.length} existing variants for replacement sync...`);
                 await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: existingVariantIds });
             }
 
             for (const v of wcVariations) {
                 const sku = v.sku || `WC-V-${v.id}`;
+                console.log(`      ➕ Creating Variant: "${sku}" (External ID: ${v.id})`);
+
                 let quantity = 0;
                 if (v.manage_stock) {
                     quantity = v.stock_quantity || 0;
@@ -353,10 +409,13 @@ export const woocommerceProductSync = task({
                     await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
                         id: variantId, input: priceListings
                     });
+                    console.log(`      ✅ Variant sync successful [Saleor ID: ${variantId}]`);
+                } else {
+                    console.error(`      ❌ Variant sync failed for SKU: ${sku}`);
                 }
             }
         }));
 
-        console.log(`✅ ${products.length} WooCommerce products synced successfully.`);
+        console.log(`\n✅ ${products.length} WooCommerce products synced successfully.`);
     }
 });
