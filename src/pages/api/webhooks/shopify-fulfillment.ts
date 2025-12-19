@@ -37,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 } else {
                     const results = await db.select()
                         .from(integrations)
-                        .where(eq(integrations.storeUrl, shopDomain.toString()))
+                        .where(eq(integrations.storeUrl, shopDomain.toString().toLowerCase()))
                         .limit(1);
 
                     const integration = results[0];
