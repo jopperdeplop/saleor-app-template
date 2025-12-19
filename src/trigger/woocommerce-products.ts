@@ -33,6 +33,10 @@ export const woocommerceProductSync = task({
             return;
         }
 
+        if (!integration.storeUrl) {
+            throw new Error(`Integration ${payload.integrationId} is missing a storeUrl. Please disconnect and reconnect your store.`);
+        }
+
         const settings = integration.settings as any;
         const consumerKey = integration.accessToken; // consumer_key
         let consumerSecret = "";
