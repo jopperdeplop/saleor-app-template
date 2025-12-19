@@ -381,11 +381,27 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
     const domainPrefix = integration.storeUrl;
 
     // Lightspeed X-Series 2.0 Register Sale Payload
+    // 1. Fetch available registers if 'default' is not a safe bet
+    let registerId = "default";
+    try {
+        const regRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/registers`, {
+            headers: { 'Authorization': `Bearer ${integration.accessToken}` }
+        });
+        if (regRes.ok) {
+            const regData = await regRes.json();
+            if (regData.data?.[0]?.id) {
+                registerId = regData.data[0].id;
+            }
+        }
+    } catch (e) {
+        logDebug(`      ⚠️ Failed to fetch registers, falling back to 'default'.`);
+    }
+
     const payload = {
-        register_id: "default", // We may need to fetch the first available register id or allow configuration
+        register_id: registerId,
         status: "OPEN",
         user_id: "default",
-        customer_id: null, // Could map customer if matching email exists
+        customer_id: null,
         register_sale_products: lines.map(line => ({
             product_id: line.variant?.externalReference || line.variant?.sku,
             quantity: line.quantity,
@@ -408,7 +424,7 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
 
         const json: any = await res.json();
         if (res.ok && json.data?.id) {
-            logDebug(`      ✅ Lightspeed Mirror Sale created: ${json.data.id}`);
+            logDebug(`      ✅ Lightspeed Mirror Sale created: ${json.data.id} on Register: ${registerId}`);
             return json.data.id.toString();
         } else {
             logDebug(`      ❌ Lightspeed Sale Creation Failed:`, JSON.stringify(json));
