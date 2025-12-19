@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V12-BRANDFIX";
+const SYNC_VERSION = "LITERAL-CLONE-V13-WCFX";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -385,7 +385,7 @@ export const woocommerceProductSync = task({
                         product: finalProductId,
                         sku: sku,
                         name: v.attributes?.map((a: any) => (a.option || a.name)).join(' / ') || "Default",
-                        externalReference: predictableVariantRef, // Use predictable ref
+                        externalReference: v.id.toString(), // Store numeric ID for fulfillment
                         attributes: [],
                         trackInventory: true,
                         stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity }] : []

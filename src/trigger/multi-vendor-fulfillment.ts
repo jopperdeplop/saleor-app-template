@@ -8,14 +8,14 @@ import { eq, and } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 export const automateMultiVendorFulfillment = task({
-    id: "shopify-generate-shipping-label",
+    id: "multi-vendor-fulfillment",
     retry: {
         maxAttempts: 3,
         minTimeoutInMs: 5000
     },
     run: async (payload: { orderId: string }) => {
         const orderIdentifier = payload.orderId;
-        logDebug(`🔄 [Multi-Vendor] Routing Order to Shopify: ${orderIdentifier}`);
+        logDebug(`🏁 [Multi-Vendor] Routing Order: ${orderIdentifier}`);
 
         // 1. Setup Saleor Context
         const apiUrl = process.env.SALEOR_API_URL;
@@ -279,11 +279,21 @@ async function createMirrorOrderOnWooCommerce(integration: any, order: any, line
             postcode: order.shippingAddress.postalCode,
             country: order.shippingAddress.country.code
         } : undefined,
-        line_items: lines.map(l => ({
-            product_id: parseInt(l.variant?.externalReference || "0"),
-            variation_id: l.variant?.externalReference && l.variant.name !== "Default" ? parseInt(l.variant.externalReference) : undefined,
-            quantity: l.quantity
-        })),
+        line_items: lines.map(l => {
+            const extRef = l.variant?.externalReference || "0";
+            const numericId = parseInt(extRef);
+
+            const item: any = {
+                product_id: parseInt(l.variant?.product?.externalReference || "0"),
+                quantity: l.quantity
+            };
+
+            if (l.variant?.name !== "Default" && !isNaN(numericId) && numericId > 0) {
+                item.variation_id = numericId;
+            }
+
+            return item;
+        }),
         customer_note: `Marketplace Order: ${order.number}`
     };
 
