@@ -234,15 +234,18 @@ async function ensureWooCommerceWebhook(integration: any) {
     }
 
     let webhookSecret = settings.webhookSecret;
+    let needsSync = settings.webhookSecretSynced === false;
     let justGenerated = false;
+
     if (!webhookSecret) {
         logDebug(`      🔐 Generating new WooCommerce Webhook Secret for ${normalizedStoreUrl}...`);
         webhookSecret = crypto.randomBytes(32).toString('hex');
         justGenerated = true;
+        needsSync = true;
 
         // Save back to DB
         await db.update(integrations)
-            .set({ settings: { ...settings, webhookSecret } })
+            .set({ settings: { ...settings, webhookSecret, webhookSecretSynced: false } })
             .where(eq(integrations.id, integration.id));
     }
 
@@ -258,9 +261,9 @@ async function ensureWooCommerceWebhook(integration: any) {
         const topic = "order.updated";
         const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.topic === topic && normalizeUrl(w.delivery_url) === normalizeUrl(webhookUrl)) : null;
 
-        if (!existing || justGenerated) {
-            if (justGenerated && existing) {
-                logDebug(`      🛡️ Updating WooCommerce webhook secret for ${normalizedStoreUrl}...`);
+        if (!existing || needsSync) {
+            if (existing) {
+                logDebug(`      🛡️ Syncing WooCommerce webhook secret for ${normalizedStoreUrl}...`);
                 await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks/${existing.id}`, {
                     method: 'PUT',
                     headers: {
@@ -271,7 +274,7 @@ async function ensureWooCommerceWebhook(integration: any) {
                         secret: webhookSecret
                     })
                 });
-            } else if (!existing) {
+            } else {
                 logDebug(`      🛠️ Registering WooCommerce webhook for ${normalizedStoreUrl}...`);
                 await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks`, {
                     method: 'POST',
@@ -284,10 +287,16 @@ async function ensureWooCommerceWebhook(integration: any) {
                         topic: topic,
                         delivery_url: webhookUrl,
                         status: "active",
-                        secret: webhookSecret // Use our secret
+                        secret: webhookSecret
                     })
                 });
             }
+
+            // Mark as synced in DB
+            await db.update(integrations)
+                .set({ settings: { ...settings, webhookSecret, webhookSecretSynced: true } })
+                .where(eq(integrations.id, integration.id));
+            logDebug(`      ✅ Webhook secret confirmed and synced for ${normalizedStoreUrl}.`);
         }
     } catch (e) {
         logDebug(`      ⚠️ Failed to ensure WooCommerce webhook for ${normalizedStoreUrl}: ${e instanceof Error ? e.message : String(e)}`);

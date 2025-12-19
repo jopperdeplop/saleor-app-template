@@ -61,27 +61,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const integration = results[0];
         let settings = (integration.settings as any) || {};
         let secret = settings.webhookSecret;
+        let secretSynced = settings.webhookSecretSynced === true;
         const brandSlug = integration.brandSlug ? integration.brandSlug.toLowerCase().replace(/[^a-z0-9]/g, '-') : null;
 
         if (!secret) {
             console.warn(`⚠️ [WC Webhook] Integration found (ID: ${integration.id}) but no secret. Generating and saving one now...`);
             secret = crypto.randomBytes(32).toString('hex');
 
-            // Persist the secret immediately
+            // Persist the secret immediately and mark as unsynced
             await db.update(integrations)
-                .set({ settings: { ...settings, webhookSecret: secret } })
+                .set({ settings: { ...settings, webhookSecret: secret, webhookSecretSynced: false } })
                 .where(eq(integrations.id, integration.id));
 
-            console.info(`✅ [WC Webhook] Generated and persisted new secret for ID ${integration.id}. Future requests will be verified.`);
-            // We still process this one as unverified because the partner store doesn't have this secret yet
+            console.info(`✅ [WC Webhook] Generated new secret for ID ${integration.id}. Processing unverified for this handshake request.`);
+            // Process unverified for the first request
         } else {
             // 2. HMAC Verification
             const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
             if (hash !== signature) {
-                console.error(`⛔ [WC Webhook] Signature mismatch for ${source}`);
-                return res.status(401).send('Signature verification failed');
+                // If the secret isn't synced yet, allow a grace period (unverified) instead of a hard 401
+                if (!secretSynced) {
+                    console.warn(`⚠️ [WC Webhook] Signature mismatch for ${source}, but secret is not yet synced. Processing unverified as grace period.`);
+                } else {
+                    console.error(`⛔ [WC Webhook] Signature verification failed for ${source}`);
+                    return res.status(401).send('Signature verification failed');
+                }
+            } else {
+                console.info(`✅ [WC Webhook] Signature verified for ${source}`);
             }
-            console.info(`✅ [WC Webhook] Signature verified for ${source}`);
         }
 
         const payload = JSON.parse(rawBody.toString());
