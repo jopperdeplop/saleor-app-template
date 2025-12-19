@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "ULTIMATE-PARITY-V2-1445"; // Date: Dec 19, Time: 14:45
+const SYNC_VERSION = "GOD-MODE-V3-1451";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -42,23 +42,32 @@ const DEFAULT_VENDOR_ADDRESS = {
 export const woocommerceProductSync = task({
     id: "woocommerce-product-sync",
     run: async (payload: { integrationId: number }) => {
-        console.log(`🚀 [${SYNC_VERSION}] Starting WooCommerce Sync Task for Integration: ${payload.integrationId}`);
+        console.log(`🚀 [${SYNC_VERSION}] Execution Start. Integration: ${payload.integrationId}`);
 
         // --- 1. SETUP & AUTH ---
         const integration = await db.query.integrations.findFirst({ where: eq(integrations.id, payload.integrationId) });
         if (!integration) throw new Error("Integration not found");
         if (integration.provider !== "woocommerce") {
-            console.warn(`⚠️ skipping: Integration ${payload.integrationId} is not WooCommerce`);
+            console.warn(`⚠️ skipping: Not WooCommerce`);
             return;
         }
 
         const apiUrl = process.env.SALEOR_API_URL;
         let saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
+
+        // --- 🩺 TOKEN VERIFICATION (MASKED) ---
         if (saleorToken) {
+            const start = saleorToken.substring(0, 5);
+            const end = saleorToken.substring(saleorToken.length - 5);
+            console.log(`🔑 [SECURITY] Using Saleor Token: ${start}...${end} (Length: ${saleorToken.length})`);
             saleorToken = `Bearer ${saleorToken.replace(/^bearer\s+/i, "")}`;
+        } else {
+            console.error("❌ [SECURITY] SALEOR_APP_TOKEN is EMPTY or UNDEFINED in this environment!");
         }
 
         if (!apiUrl || !saleorToken) throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
+        console.log(`🌐 [ENV] SALEOR_API_URL: ${apiUrl}`);
+        console.log(`🏭 [ENV] DEFAULT_WAREHOUSE_ID: ${DEFAULT_WAREHOUSE_ID}`);
 
         const saleorHeaders = {
             'Authorization': saleorToken,
@@ -76,7 +85,7 @@ export const woocommerceProductSync = task({
             'Content-Type': 'application/json'
         };
 
-        // Helper: Centralized Fetch (LITERAL PORT FROM SHOPIFY)
+        // Helper: Centralized Fetch (ABSOLUTE CLONE FROM SHOPIFY)
         const saleorFetch = async (query: string, variables: any = {}) => {
             try {
                 const res = await fetch(apiUrl, {
@@ -90,7 +99,7 @@ export const woocommerceProductSync = task({
                 }
                 const json: any = await res.json();
                 if (json.errors) {
-                    console.error("   ❌ Saleor GraphQL Error:", JSON.stringify(json.errors, null, 2));
+                    console.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
                 }
                 return json;
             } catch (e) {
@@ -139,7 +148,7 @@ export const woocommerceProductSync = task({
             const existing = find.data?.warehouses?.edges?.[0]?.node;
             if (existing) return existing.id;
 
-            console.log(`   🏭 [${SYNC_VERSION}] Attempting Warehouse: "${vendorName}"`);
+            console.log(`   🏭 Creating Warehouse for: "${vendorName}"`);
             // LITERAL PORT FROM SHOPIFY SCRIPT LINE 159
             const createRes = await saleorFetch(`mutation CreateWarehouse($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message code}}}`, {
                 input: {
@@ -152,7 +161,12 @@ export const woocommerceProductSync = task({
 
             const result = createRes.data?.warehouseCreate;
             if (result?.errors?.length > 0) {
-                console.error("   ⚠️ Warehouse Creation Errors:", JSON.stringify(result.errors, null, 2));
+                if (result.errors.some((e: any) => e.field === 'slug')) {
+                    const slugSearch = await saleorFetch(`query FindS($s:String!){warehouses(filter:{search:$s},first:5){edges{node{id slug}}}}`, { s: slug });
+                    const found = slugSearch.data?.warehouses?.edges?.find((e: any) => e.node.slug === slug)?.node;
+                    if (found) return found.id;
+                }
+                console.error("   ⚠️ Warehouse Creation Failed:", JSON.stringify(result.errors));
                 return null;
             }
 
@@ -170,7 +184,7 @@ export const woocommerceProductSync = task({
         };
 
         async function processImage(productId: string, imageUrl: string, title: string) {
-            console.log(`      🎨 Managing Media: ${imageUrl}`);
+            console.log(`      🎨 Managing Media...`);
             const mediaRes = await saleorFetch(`query GetMedia($id:ID!){product(id:$id){media{id}}}`, { id: productId });
             const existingMedia = mediaRes.data?.product?.media || [];
             if (existingMedia.length > 0) {
@@ -222,29 +236,29 @@ export const woocommerceProductSync = task({
             const storeRes = await fetch(`${integration.storeUrl}/wp-json/`, { headers: wcHeaders });
             if (storeRes.ok) {
                 const storeData = await storeRes.json();
-                if (storeData.name) {
-                    storeName = storeData.name;
-                    console.log(`📡 Store: "${storeName}"`);
-                }
+                if (storeData.name) storeName = storeData.name;
             }
         } catch (e) { console.warn("   ⚠️ store name fetch failed."); }
 
         const wcRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/products?per_page=100`, { headers: wcHeaders });
         if (!wcRes.ok) throw new Error(`WC API Error: ${wcRes.status}`);
         const products = await wcRes.json();
-        console.log(`📦 Found ${products.length} products.`);
+        console.log(`📦 Fetched ${products.length} products.`);
 
         const channels = await getSaleorChannels();
         if (channels.length === 0) throw new Error("No Channels found.");
 
-        // --- 3. PARALLEL PROCESSING ---
+        // --- 3. PARALLEL PROCESSING (EXACT SHOPIFY FLOW) ---
         await Promise.all(products.map(async (p: any) => {
             const cleanTitle = p.name.trim();
             const predictableSlug = p.slug || cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
             const brandPageId = await getOrCreateBrandPage(storeName);
             let targetWarehouseId = await getOrCreateWarehouse(storeName, channels);
-            if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
+            if (!targetWarehouseId) {
+                console.warn(`   ⚠️ Warehouse creation failed for ${storeName}. Falling back to DEFAULT_WAREHOUSE_ID.`);
+                targetWarehouseId = DEFAULT_WAREHOUSE_ID;
+            }
 
             const slugCheck = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id}}`, { s: predictableSlug });
             let finalProductId = slugCheck.data?.product?.id;
@@ -275,9 +289,8 @@ export const woocommerceProductSync = task({
 
             // Brand
             if (brandPageId && BRAND_ATTRIBUTE_ID) {
-                await saleorFetch(`mutation UpdProd($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field message}}}`, {
-                    id: finalProductId,
-                    input: { attributes: [{ id: BRAND_ATTRIBUTE_ID, reference: brandPageId }] }
+                await saleorFetch(`mutation UpProd($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field}}}`, {
+                    id: finalProductId, input: { attributes: [{ id: BRAND_ATTRIBUTE_ID, reference: brandPageId }] }
                 });
             }
 
@@ -326,31 +339,25 @@ export const woocommerceProductSync = task({
 
             for (const v of wcVariations) {
                 const sku = v.sku || `WC-V-${v.id}`;
-                console.log(`      ➕ [${SYNC_VERSION}] Creating Variant: "${sku}"`);
+                console.log(`      ➕ Creating Variant: "${sku}"`);
 
                 let quantity = 0;
                 if (v.manage_stock) quantity = v.stock_quantity || 0;
                 else quantity = v.stock_status === 'instock' ? 100 : 0;
 
-                const varInput = {
-                    product: finalProductId,
-                    sku: sku,
-                    name: v.attributes?.map((a: any) => a.option).join(' / ') || "Default",
-                    externalReference: v.id.toString(),
-                    attributes: [],
-                    trackInventory: true,
-                    stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity }] : []
-                };
-
-                console.log(`      🔍 Pre-flight Input:`, JSON.stringify(varInput));
-
                 const varRes = await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
-                    input: varInput
+                    input: {
+                        product: finalProductId,
+                        sku: sku,
+                        name: v.attributes?.map((a: any) => a.option).join(' / ') || "Default",
+                        externalReference: v.id.toString(),
+                        attributes: [],
+                        trackInventory: true,
+                        stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity }] : []
+                    }
                 });
 
-                const variantResult = varRes.data?.productVariantCreate;
-                const variantId = variantResult?.productVariant?.id;
-
+                const variantId = varRes.data?.productVariantCreate?.productVariant?.id;
                 if (variantId) {
                     const priceListings = channels.map((ch: any) => ({
                         channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
@@ -358,13 +365,10 @@ export const woocommerceProductSync = task({
                     await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
                         id: variantId, input: priceListings
                     });
-                    console.log(`      ✅ Variant Created: ${sku}`);
-                } else {
-                    console.error(`      ❌ Variant sync failed for SKU: ${sku}. Inner Errors:`, JSON.stringify(variantResult?.errors || [], null, 2));
                 }
             }
         }));
 
-        console.log(`✅ [${SYNC_VERSION}] WooCommerce sync finished.`);
+        console.log(`✅ [${SYNC_VERSION}] WooCommerce Sync Finished.`);
     }
 });
