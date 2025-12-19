@@ -5,6 +5,7 @@ import { apl } from "../saleor-app";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
 import { eq, and } from "drizzle-orm";
+import { decrypt } from "../lib/encryption";
 
 export const automateMultiVendorFulfillment = task({
     id: "shopify-generate-shipping-label",
@@ -48,23 +49,31 @@ export const automateMultiVendorFulfillment = task({
                 continue;
             }
 
-            // AUTO-REGISTER WEBHOOK (Zero-Touch Onboarding)
-            // This ensures we get notified when the vendor ships the order without them having to do anything.
-            await ensureShopifyFulfillmentWebhook(integration);
-
             // B. Mirror Order Logic
-            let shopifyOrderId = await getLinkedShopifyOrderId(order, vendor);
-            if (!shopifyOrderId) {
-                logDebug(`      🛒 Creating Mirror Order in ${vendor}'s Shopify...`);
-                shopifyOrderId = await createMirrorOrderOnShopify(integration, order, lines);
-                if (shopifyOrderId) {
+            const provider = integration.provider;
+            const metaKey = `${provider}_order_id_${slugify(vendor)}`;
+
+            let mirrorOrderId = await getLinkedOrderId(order, metaKey);
+
+            if (!mirrorOrderId) {
+                logDebug(`      🛒 Creating Mirror Order in ${vendor}'s ${provider}...`);
+
+                if (provider === "shopify") {
+                    await ensureShopifyFulfillmentWebhook(integration);
+                    mirrorOrderId = await createMirrorOrderOnShopify(integration, order, lines);
+                } else if (provider === "woocommerce") {
+                    await ensureWooCommerceWebhook(integration);
+                    mirrorOrderId = await createMirrorOrderOnWooCommerce(integration, order, lines);
+                }
+
+                if (mirrorOrderId) {
                     await client.mutation(UPDATE_ORDER_METADATA, {
                         id: order.id,
-                        input: [{ key: `shopify_order_id_${slugify(vendor)}`, value: shopifyOrderId }]
+                        input: [{ key: metaKey, value: mirrorOrderId }]
                     }).toPromise();
                 }
             } else {
-                logDebug(`      🔗 Found existing mirror order: ${shopifyOrderId}`);
+                logDebug(`      🔗 Found existing mirror order: ${mirrorOrderId}`);
             }
         }
 
@@ -127,16 +136,21 @@ async function ensureShopifyFulfillmentWebhook(integration: any) {
 }
 
 async function getVendorIntegration(brand: string) {
-    const res = await db.select({ accessToken: integrations.accessToken, storeUrl: integrations.storeUrl })
+    const res = await db.select({
+        accessToken: integrations.accessToken,
+        storeUrl: integrations.storeUrl,
+        provider: integrations.provider,
+        settings: integrations.settings
+    })
         .from(integrations)
         .innerJoin(users, eq(integrations.userId, users.id))
         .where(and(eq(users.brand, brand), eq(integrations.status, "active")))
         .limit(1);
-    return res[0];
+    return res[0] as any;
 }
 
-async function getLinkedShopifyOrderId(order: any, vendor: string) {
-    const meta = order.metadata?.find((m: any) => m.key === `shopify_order_id_${slugify(vendor)}`);
+async function getLinkedOrderId(order: any, key: string) {
+    const meta = order.metadata?.find((m: any) => m.key === key);
     return meta?.value;
 }
 
@@ -189,6 +203,108 @@ async function createMirrorOrderOnShopify(integration: any, order: any, lines: a
         }
     } catch (err: any) {
         logDebug(`      ❌ Network error creating Shopify order: ${err.message}`);
+        return null;
+    }
+}
+
+async function ensureWooCommerceWebhook(integration: any) {
+    const settings = integration.settings as any;
+    const consumerKey = integration.accessToken;
+    const consumerSecret = settings?.consumerSecret ? decrypt(settings.consumerSecret) : "";
+
+    if (!consumerKey || !consumerSecret) return;
+
+    const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+    const appUrl = process.env.SHOPIFY_WEBHOOK_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://saleor-app-template-seven.vercel.app");
+    const webhookUrl = `${appUrl}/api/webhooks/woocommerce-fulfillment`;
+
+    try {
+        const listRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/webhooks`, {
+            headers: { 'Authorization': `Basic ${auth}` }
+        });
+        const listJson: any = await listRes.json();
+        const topic = "order.updated";
+        const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.topic === topic && w.delivery_url === webhookUrl) : null;
+
+        if (!existing) {
+            logDebug(`      🛠️ Registering WooCommerce webhook for ${integration.storeUrl}...`);
+            await fetch(`${integration.storeUrl}/wp-json/wc/v3/webhooks`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${auth}`
+                },
+                body: JSON.stringify({
+                    name: "Marketplace Fulfillment Sync",
+                    topic: topic,
+                    delivery_url: webhookUrl,
+                    status: "active"
+                })
+            });
+        }
+    } catch (e) {
+        logDebug(`      ⚠️ Failed to ensure WooCommerce webhook: ${e instanceof Error ? e.message : String(e)}`);
+    }
+}
+
+async function createMirrorOrderOnWooCommerce(integration: any, order: any, lines: any[]) {
+    const settings = integration.settings as any;
+    const consumerKey = integration.accessToken;
+    const consumerSecret = settings?.consumerSecret ? decrypt(settings.consumerSecret) : "";
+
+    if (!consumerKey || !consumerSecret) return null;
+
+    const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+
+    const payload = {
+        payment_method: "other",
+        payment_method_title: "Marketplace Proxy",
+        set_paid: true,
+        billing: {
+            first_name: order.billingAddress?.firstName || order.shippingAddress?.firstName || "Customer",
+            last_name: order.billingAddress?.lastName || order.shippingAddress?.lastName || "",
+            address_1: order.billingAddress?.streetAddress1 || order.shippingAddress?.streetAddress1 || "",
+            city: order.billingAddress?.city || order.shippingAddress?.city || "",
+            postcode: order.billingAddress?.postalCode || order.shippingAddress?.postalCode || "",
+            country: order.billingAddress?.country.code || order.shippingAddress?.country.code || "US",
+            email: order.userEmail
+        },
+        shipping: order.shippingAddress ? {
+            first_name: order.shippingAddress.firstName,
+            last_name: order.shippingAddress.lastName,
+            address_1: order.shippingAddress.streetAddress1,
+            city: order.shippingAddress.city,
+            postcode: order.shippingAddress.postalCode,
+            country: order.shippingAddress.country.code
+        } : undefined,
+        line_items: lines.map(l => ({
+            product_id: parseInt(l.variant?.externalReference || "0"),
+            variation_id: l.variant?.externalReference && l.variant.name !== "Default" ? parseInt(l.variant.externalReference) : undefined,
+            quantity: l.quantity
+        })),
+        customer_note: `Marketplace Order: ${order.number}`
+    };
+
+    try {
+        const res = await fetch(`${integration.storeUrl}/wp-json/wc/v3/orders`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${auth}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const json: any = await res.json();
+        if (res.ok && json.id) {
+            logDebug(`      ✅ WC Mirror order created: ${json.id}`);
+            return json.id.toString();
+        } else {
+            logDebug(`      ❌ WC Order Creation Failed:`, JSON.stringify(json));
+            return null;
+        }
+    } catch (err: any) {
+        logDebug(`      ❌ Network error creating WC order: ${err.message}`);
         return null;
     }
 }
