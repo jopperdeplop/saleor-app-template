@@ -4,7 +4,7 @@ import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V9-CHANNELFIX";
+const SYNC_VERSION = "LITERAL-CLONE-V11-PRICEFIX";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -343,33 +343,24 @@ export const shopifyProductSync = task({
                 await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: existingVariants.map((v: any) => v.id) });
             }
 
+            // --- 📢 Step 1: Create all variants first (without prices) ---
             for (const vEdge of variants) {
                 const v = vEdge.node;
-                const sku = v.sku || v.id.split('/').pop() || "";
-                const varRes = await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
+                const variantExternalRef = `${p.id.split('/').pop()}-${v.id.split('/').pop()}`; // Unique external reference for variant
+                await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
                     input: {
                         product: finalProductId,
-                        sku: sku,
+                        sku: v.sku || variantExternalRef, // Use SKU if available, otherwise externalRef
                         name: v.title || "Default",
-                        externalReference: v.id.split('/').pop(),
+                        externalReference: variantExternalRef,
                         attributes: [],
                         trackInventory: true,
                         stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity: v.inventoryQuantity || 0 }] : []
                     }
                 });
-                const variantId = varRes.data?.productVariantCreate?.productVariant?.id;
-                if (variantId) {
-                    const priceListings = channels.map((ch: any) => ({
-                        channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
-                    }));
-                    await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
-                        id: variantId, input: priceListings
-                    });
-                }
             }
 
-            // --- 📢 Final Channel & Visibility Setup ---
-            // Reordering to end ensures the product has variants when listings are created
+            // --- 📢 Step 2: Ensure Product is in Channels (Saleor requirement for Variant Prices) ---
             const dateStr = new Date().toISOString().split('T')[0];
             const channelListings = channels.map((ch: any) => ({
                 channelId: ch.id,
@@ -383,8 +374,27 @@ export const shopifyProductSync = task({
                 id: finalProductId,
                 input: { updateChannels: channelListings }
             });
+
+            // --- 💰 Step 3: Assign Prices to Variants (Now that product is in channels) ---
+            for (const vEdge of p.variants.edges) {
+                const v = vEdge.node;
+                const predictableSlug = `${p.id.split('/').pop()}-${v.id.split('/').pop()}`;
+
+                // Lookup created variant
+                const findVar = await saleorFetch(`query FindVar($s:String!){productVariant(externalReference:$s){id}}`, { s: predictableSlug });
+                const variantId = findVar.data?.productVariant?.id;
+
+                if (variantId) {
+                    const priceListings = channels.map((ch: any) => ({
+                        channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
+                    }));
+                    await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
+                        id: variantId, input: priceListings
+                    });
+                }
+            }
         }));
 
-        console.log(`✅ [${SYNC_VERSION}] Shopify sync finished.`);
+        console.log(`✅ [LITERAL-CLONE-V11-PRICEFIX] Shopify sync finished.`);
     }
 });

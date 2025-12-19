@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V9-CHANNELFIX";
+const SYNC_VERSION = "LITERAL-CLONE-V11-PRICEFIX";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -354,18 +354,22 @@ export const woocommerceProductSync = task({
                 await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: existingVariants.map((v: any) => v.id) });
             }
 
+            // --- 📦 Step 1: Create all variants ---
+            const variantsToProcess = [];
             for (const v of wcVariations) {
                 const sku = v.sku || `WC-V-${v.id}`;
                 let quantity = 0;
                 if (v.manage_stock) quantity = v.stock_quantity || 0;
                 else quantity = v.stock_status === 'instock' ? 100 : 0;
 
+                const predictableVariantRef = `${finalProductId}-${sku}`; // Use a predictable external reference for lookup
+
                 const varRes = await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
                     input: {
                         product: finalProductId,
                         sku: sku,
                         name: v.attributes?.map((a: any) => (a.option || a.name)).join(' / ') || "Default",
-                        externalReference: v.id.toString(),
+                        externalReference: predictableVariantRef, // Use predictable ref
                         attributes: [],
                         trackInventory: true,
                         stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity }] : []
@@ -373,17 +377,11 @@ export const woocommerceProductSync = task({
                 });
                 const variantId = varRes.data?.productVariantCreate?.productVariant?.id;
                 if (variantId) {
-                    const priceListings = channels.map((ch: any) => ({
-                        channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
-                    }));
-                    await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
-                        id: variantId, input: priceListings
-                    });
+                    variantsToProcess.push({ id: variantId, price: v.price, predictableRef: predictableVariantRef });
                 }
             }
 
-            // --- 📢 Final Channel & Visibility Setup ---
-            // Reordering to end ensures the product has variants when listings are created
+            // --- 📢 Step 2: Ensure Product is in Channels ---
             const dateStr = new Date().toISOString().split('T')[0];
             const channelListings = channels.map((ch: any) => ({
                 channelId: ch.id,
@@ -397,8 +395,18 @@ export const woocommerceProductSync = task({
                 id: finalProductId,
                 input: { updateChannels: channelListings }
             });
+
+            // --- 💰 Step 3: Assign Prices to Variants ---
+            for (const v of variantsToProcess) {
+                const priceListings = channels.map((ch: any) => ({
+                    channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
+                }));
+                await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
+                    id: v.id, input: priceListings
+                });
+            }
         }));
 
-        console.log(`✅ [${SYNC_VERSION}] WooCommerce sync finished.`);
+        console.log(`✅ [LITERAL-CLONE-V11-PRICEFIX] WooCommerce sync finished.`);
     }
 });
