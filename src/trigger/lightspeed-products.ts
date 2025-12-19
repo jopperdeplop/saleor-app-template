@@ -249,14 +249,22 @@ export const lightspeedProductSync = task({
                     sku: v.sku || variantSlug,
                     name: v.name || "Default",
                     externalReference: v.id,
+                    attributes: [], // --- FIX: Explicitly pass empty attributes list ---
                     trackInventory: true,
-                    stocks: [{ warehouse: warehouseId, quantity: v.inventory_quantity || 0 }]
+                    stocks: [{ warehouse: warehouseId, quantity: parseInt(v.inventory_quantity?.toString() || "0") }]
                 };
 
                 let variantId = existingVar?.id;
                 if (variantId) {
-                    await saleorFetch(`mutation UpdV($id:ID!,$input:ProductVariantInput!){productVariantUpdate(id:$id,input:$input){errors{field}}}`, {
-                        id: variantId, input: varInput
+                    await saleorFetch(`mutation UpdV($id:ID!,$input:ProductVariantInput!){productVariantUpdate(id:$id,input:$input){errors{field message}}}`, {
+                        id: variantId, input: {
+                            sku: varInput.sku,
+                            name: varInput.name,
+                            externalReference: varInput.externalReference,
+                            attributes: varInput.attributes,
+                            trackInventory: varInput.trackInventory,
+                            stocks: varInput.stocks
+                        }
                     });
                 } else {
                     const varCreateRes = await saleorFetch(`mutation CreateV($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
