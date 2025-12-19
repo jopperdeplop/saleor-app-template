@@ -237,21 +237,34 @@ export const lightspeedProductSync = task({
 
             // Variants
             // X-Series 2.0 has p.variants (array) or a single product acts as a variant
-            const lsVariants = p.variants || [{ id: p.id, sku: p.sku || `sku-${p.id}`, price: p.price }];
+            const lsVariants = p.variants || [p];
 
             for (const v of lsVariants) {
                 const variantSlug = `ls-v-${v.id}`;
                 const varFind = await saleorFetch(`query GetV($id:ID!){product(id:$id){variants{id externalReference}}}`, { id: finalProductId });
                 const existingVar = varFind.data?.product?.variants?.find((ev: any) => ev.externalReference === v.id);
 
+                // --- 📦 INVENTORY CALCULATION ---
+                // Sum up inventory count from all outlets
+                let totalStock = 0;
+                if (Array.isArray(v.inventory)) {
+                    totalStock = v.inventory.reduce((sum: number, inv: any) => sum + (parseFloat(inv.count?.toString() || "0")), 0);
+                } else if (v.inventory_quantity !== undefined) {
+                    totalStock = parseFloat(v.inventory_quantity.toString());
+                } else if (v.count !== undefined) {
+                    totalStock = parseFloat(v.count.toString());
+                }
+
+                console.log(`      📦 Variant ${v.sku || v.id} Stock: ${totalStock}`);
+
                 const varInput = {
                     product: finalProductId,
                     sku: v.sku || variantSlug,
-                    name: v.name || "Default",
+                    name: v.variant_name || v.name || "Default",
                     externalReference: v.id,
-                    attributes: [], // --- FIX: Explicitly pass empty attributes list ---
+                    attributes: [],
                     trackInventory: true,
-                    stocks: [{ warehouse: warehouseId, quantity: parseInt(v.inventory_quantity?.toString() || "0") }]
+                    stocks: [{ warehouse: warehouseId, quantity: Math.max(0, Math.floor(totalStock)) }]
                 };
 
                 let variantId = existingVar?.id;
@@ -274,9 +287,19 @@ export const lightspeedProductSync = task({
                 }
 
                 if (variantId) {
+                    // --- 💰 PRICING ---
+                    // X-Series uses 'price' (retail) and 'supply_price' (cost)
+                    const retailPrice = parseFloat(v.price?.toString() || v.retail_price?.toString() || "0");
+                    const costPrice = parseFloat(v.supply_price?.toString() || "0");
+
+                    console.log(`      💰 Variant ${v.sku || v.id} Price: ${retailPrice}, Cost: ${costPrice}`);
+
                     const priceListings = channels.map((ch: any) => ({
-                        channelId: ch.id, price: parseFloat(v.price || "0")
+                        channelId: ch.id,
+                        price: retailPrice,
+                        costPrice: costPrice > 0 ? costPrice : retailPrice
                     }));
+
                     await saleorFetch(`mutation Price($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
                         id: variantId, input: priceListings
                     });
