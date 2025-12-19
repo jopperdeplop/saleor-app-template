@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V8-DEDUP";
+const SYNC_VERSION = "LITERAL-CLONE-V9-CHANNELFIX";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -326,19 +326,7 @@ export const woocommerceProductSync = task({
                 });
             }
 
-            const dateStr = new Date().toISOString().split('T')[0];
-            const channelListings = channels.map((ch: any) => ({
-                channelId: ch.id,
-                isPublished: p.status === 'publish',
-                publicationDate: dateStr,
-                isAvailableForPurchase: true,
-                visibleInListings: true,
-                availableForPurchaseAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-            }));
-            await saleorFetch(`mutation UpdChannel($id:ID!,$input:ProductChannelListingUpdateInput!){productChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
-                id: finalProductId,
-                input: { updateChannels: channelListings }
-            });
+
 
             if (p.images && p.images.length > 0) {
                 await processImage(finalProductId, p.images[0].src, p.name);
@@ -393,6 +381,22 @@ export const woocommerceProductSync = task({
                     });
                 }
             }
+
+            // --- 📢 Final Channel & Visibility Setup ---
+            // Reordering to end ensures the product has variants when listings are created
+            const dateStr = new Date().toISOString().split('T')[0];
+            const channelListings = channels.map((ch: any) => ({
+                channelId: ch.id,
+                isPublished: p.status === 'publish',
+                publicationDate: dateStr,
+                isAvailableForPurchase: true,
+                visibleInListings: true,
+                availableForPurchaseAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+            }));
+            await saleorFetch(`mutation UpdChannel($id:ID!,$input:ProductChannelListingUpdateInput!){productChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
+                id: finalProductId,
+                input: { updateChannels: channelListings }
+            });
         }));
 
         console.log(`✅ [${SYNC_VERSION}] WooCommerce sync finished.`);
