@@ -1,5 +1,6 @@
 import { task } from "@trigger.dev/sdk";
 import { makeSaleorClient, ORDER_QUERY, UPDATE_ORDER_METADATA } from "../lib/saleor-client";
+import crypto from 'crypto';
 import { logDebug, OrderLine } from "../lib/utils";
 import { apl } from "../saleor-app";
 import { db } from "../db";
@@ -210,11 +211,23 @@ async function createMirrorOrderOnShopify(integration: any, order: any, lines: a
 }
 
 async function ensureWooCommerceWebhook(integration: any) {
-    const settings = integration.settings as any;
+    const settings = (integration.settings || {}) as any;
     const consumerKey = integration.accessToken;
     const consumerSecret = settings?.consumerSecret ? decrypt(settings.consumerSecret) : "";
 
     if (!consumerKey || !consumerSecret) return;
+
+    // 1. Secret Management
+    let webhookSecret = settings.webhookSecret;
+    if (!webhookSecret) {
+        logDebug(`      🔐 Generating new WooCommerce Webhook Secret for ${integration.storeUrl}...`);
+        webhookSecret = crypto.randomBytes(32).toString('hex');
+
+        // Save back to DB
+        await db.update(integrations)
+            .set({ settings: { ...settings, webhookSecret } })
+            .where(eq(integrations.id, integration.id));
+    }
 
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
     const appUrl = process.env.SHOPIFY_WEBHOOK_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://saleor-app-template-seven.vercel.app");
@@ -240,7 +253,8 @@ async function ensureWooCommerceWebhook(integration: any) {
                     name: "Marketplace Fulfillment Sync",
                     topic: topic,
                     delivery_url: webhookUrl,
-                    status: "active"
+                    status: "active",
+                    secret: webhookSecret // Use our secret
                 })
             });
         }

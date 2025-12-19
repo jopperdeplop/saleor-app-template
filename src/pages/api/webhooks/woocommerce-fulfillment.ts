@@ -1,35 +1,71 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import crypto from 'crypto';
 import { woocommerceFulfillmentSync } from '@/trigger/woocommerce-fulfillment-sync';
+import { db } from '@/db';
+import { integrations } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const config = {
-    api: { bodyParser: true }, // WC usually sends small JSON, simplify if not needing raw body for sig
+    api: { bodyParser: false },
 };
+
+async function getRawBody(req: NextApiRequest): Promise<Buffer> {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    return Buffer.concat(chunks);
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
     try {
+        const rawBody = await getRawBody(req);
         const topic = req.headers['x-wc-webhook-topic'];
-        const source = req.headers['x-wc-webhook-source']; // Often the store domain
-        const payload = req.body;
+        const signature = req.headers['x-wc-webhook-signature'];
+        const source = req.headers['x-wc-webhook-source']; // Hostname of the store
 
         console.info(`📡 [WC Webhook] Incoming: ${topic} | Source: ${source}`);
 
-        // Topic: order.updated
+        if (!source || !signature) {
+            console.error("⛔ [WC Webhook] Missing signature or source headers.");
+            return res.status(401).send('Unauthorized');
+        }
+
+        // 1. Resolve Secret from DB
+        const results = await db.select()
+            .from(integrations)
+            .where(eq(integrations.storeUrl, source.toString().replace(/\/$/, "")))
+            .limit(1);
+
+        const integration = results[0];
+        const secret = (integration?.settings as any)?.webhookSecret;
+
+        if (!secret) {
+            console.warn(`⚠️ [WC Webhook] No secret found for ${source}. Processing unverified.`);
+        } else {
+            // 2. HMAC Verification
+            const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+            if (hash !== signature) {
+                console.error(`⛔ [WC Webhook] Signature mismatch for ${source}`);
+                return res.status(401).send('Signature verification failed');
+            }
+            console.info(`✅ [WC Webhook] Signature verified for ${source}`);
+        }
+
+        const payload = JSON.parse(rawBody.toString());
+
+        // 3. Status Processing
         if (topic === 'order.updated') {
             const status = payload.status;
             const wcOrderId = payload.id?.toString();
 
-            // We consider "completed" as the trigger for fulfillment back to Saleor
             if (status === 'completed' && wcOrderId) {
-                // Tracking info might be in metadata or specific fields depending on plugins (e.g., Shipment Tracking)
-                // For now, we sync the status. Tracking can be added later if standard fields are found.
                 const trackingNumber = payload.shipping_lines?.[0]?.instance_id || null;
 
                 const handle = await woocommerceFulfillmentSync.trigger({
                     woocommerceOrderId: wcOrderId,
                     trackingNumber: trackingNumber || undefined,
-                    vendorStoreUrl: source?.toString() || payload.customer_url || ""
+                    vendorStoreUrl: source.toString()
                 });
 
                 return res.status(200).json({ success: true, handleId: handle.id });
