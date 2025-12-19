@@ -34,17 +34,21 @@ export const woocommerceInventorySync = task({
             quantity = stockStatus === 'instock' ? 100 : 0;
         }
 
-        // 3. Find Saleor Variant by External Reference
-        // We look for any variant that has this WC Product ID as externalReference
+        // 3. Find Vendor Warehouse
+        const vendor = new URL(integration.storeUrl).hostname;
+        const whSlug = `vendor-${vendor.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+        const whRes = await saleorFetch(`query FindWH($s:String!){warehouses(filter:{search:$s},first:1){edges{node{id slug}}}}`, { s: vendor });
+        let targetWarehouseId = whRes.data?.warehouses?.edges?.find((e: any) => e.node.slug === whSlug)?.node?.id || process.env.SALEOR_WAREHOUSE_ID;
+
+        if (!targetWarehouseId) throw new Error("No target warehouse found for sync.");
+
+        // 4. Find Saleor Variant by External Reference
         const findVarRes = await saleorFetch(`
             query FindVar($ref: String!) {
                 productVariants(filter: { externalReference: $ref }, first: 10) {
                     edges {
                         node {
                             id
-                            product {
-                                id
-                            }
                         }
                     }
                 }
@@ -57,10 +61,10 @@ export const woocommerceInventorySync = task({
             return;
         }
 
-        // 4. Update Stock for all matching variants
+        // 5. Update Stock for all matching variants
         for (const edge of variants) {
             const variantId = edge.node.id;
-            console.log(`📦 Updating Saleor Stock for Variant ${variantId} -> Quantity: ${quantity}`);
+            console.log(`📦 Updating Saleor Stock for Variant ${variantId} -> Quantity: ${quantity} in Warehouse: ${targetWarehouseId}`);
 
             await saleorFetch(`
                 mutation UpdateStock($id: ID!, $stocks: [StockInput!]!) {
@@ -70,7 +74,7 @@ export const woocommerceInventorySync = task({
                 }
             `, {
                 id: variantId,
-                stocks: [{ warehouse: WAREHOUSE_ID, quantity: quantity }]
+                stocks: [{ warehouse: targetWarehouseId, quantity: quantity }]
             });
         }
 
