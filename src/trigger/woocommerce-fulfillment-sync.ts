@@ -1,6 +1,6 @@
 import { task } from "@trigger.dev/sdk";
 import { makeSaleorClient, WAREHOUSE_QUERY, FULFILLMENT_CREATE } from "../lib/saleor-client";
-import { logDebug } from "../lib/utils";
+import { logDebug, normalizeUrl } from "../lib/utils";
 import { apl } from "../saleor-app";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
@@ -24,11 +24,11 @@ export const woocommerceFulfillmentSync = task({
         const client = makeSaleorClient(apiUrl, authData.token);
 
         // 2. Find the Brand Slug for this Store URL
-        logDebug(`   🔍 Looking up brand for store: ${payload.vendorStoreUrl}`);
+        const normalizedSource = normalizeUrl(payload.vendorStoreUrl);
         const vendorData = await db.select({ brand: users.brand })
             .from(integrations)
             .innerJoin(users, eq(integrations.userId, users.id))
-            .where(eq(integrations.storeUrl, payload.vendorStoreUrl))
+            .where(eq(integrations.storeUrl, normalizedSource))
             .limit(1);
 
         const brandName = vendorData[0]?.brand;
@@ -74,8 +74,8 @@ export const woocommerceFulfillmentSync = task({
         if (!saleorOrder) {
             logDebug(`   🕵️ Falling back to broad metadata scan...`);
             const { data: broadData } = await client.query(`
-                query BroadOrderSearch($val: String!) {
-                    orders(first: 20, filter: { search: $val }) {
+                query BroadOrderSearch {
+                    orders(first: 50) {
                         edges {
                             node {
                                 id
@@ -94,10 +94,10 @@ export const woocommerceFulfillmentSync = task({
                         }
                     }
                 }
-            `, { val: payload.woocommerceOrderId }).toPromise();
+            `, {}).toPromise();
 
             saleorOrder = broadData?.orders?.edges?.find((e: any) =>
-                e.node.metadata.some((m: any) => m.key.startsWith('woocommerce_order_id_') && m.value === payload.woocommerceOrderId)
+                e.node.metadata.some((m: any) => m.key.includes('woocommerce_order_id_') && m.value === payload.woocommerceOrderId)
             )?.node;
         }
 

@@ -1,7 +1,7 @@
 import { task } from "@trigger.dev/sdk";
 import { makeSaleorClient, ORDER_QUERY, UPDATE_ORDER_METADATA } from "../lib/saleor-client";
 import crypto from 'crypto';
-import { logDebug, OrderLine } from "../lib/utils";
+import { logDebug, OrderLine, normalizeUrl } from "../lib/utils";
 import { apl } from "../saleor-app";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
@@ -218,9 +218,10 @@ async function ensureWooCommerceWebhook(integration: any) {
     if (!consumerKey || !consumerSecret) return;
 
     // 1. Secret Management
+    const normalizedStoreUrl = normalizeUrl(integration.storeUrl);
     let webhookSecret = settings.webhookSecret;
     if (!webhookSecret) {
-        logDebug(`      🔐 Generating new WooCommerce Webhook Secret for ${integration.storeUrl}...`);
+        logDebug(`      🔐 Generating new WooCommerce Webhook Secret for ${normalizedStoreUrl}...`);
         webhookSecret = crypto.randomBytes(32).toString('hex');
 
         // Save back to DB
@@ -234,16 +235,16 @@ async function ensureWooCommerceWebhook(integration: any) {
     const webhookUrl = `${appUrl}/api/webhooks/woocommerce-fulfillment`;
 
     try {
-        const listRes = await fetch(`${integration.storeUrl}/wp-json/wc/v3/webhooks`, {
+        const listRes = await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks`, {
             headers: { 'Authorization': `Basic ${auth}` }
         });
         const listJson: any = await listRes.json();
         const topic = "order.updated";
-        const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.topic === topic && w.delivery_url === webhookUrl) : null;
+        const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.topic === topic && normalizeUrl(w.delivery_url) === normalizeUrl(webhookUrl)) : null;
 
         if (!existing) {
-            logDebug(`      🛠️ Registering WooCommerce webhook for ${integration.storeUrl}...`);
-            await fetch(`${integration.storeUrl}/wp-json/wc/v3/webhooks`, {
+            logDebug(`      🛠️ Registering WooCommerce webhook for ${normalizedStoreUrl}...`);
+            await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -259,7 +260,7 @@ async function ensureWooCommerceWebhook(integration: any) {
             });
         }
     } catch (e) {
-        logDebug(`      ⚠️ Failed to ensure WooCommerce webhook: ${e instanceof Error ? e.message : String(e)}`);
+        logDebug(`      ⚠️ Failed to ensure WooCommerce webhook for ${normalizedStoreUrl}: ${e instanceof Error ? e.message : String(e)}`);
     }
 }
 

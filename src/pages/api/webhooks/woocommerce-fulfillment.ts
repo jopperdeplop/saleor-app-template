@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
 import { woocommerceFulfillmentSync } from '@/trigger/woocommerce-fulfillment-sync';
+import { normalizeUrl } from '@/lib/utils';
 import { db } from '@/db';
 import { integrations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -32,9 +33,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // 1. Resolve Secret from DB
+        const normalizedSource = normalizeUrl(source.toString());
         const results = await db.select()
             .from(integrations)
-            .where(eq(integrations.storeUrl, source.toString().replace(/\/$/, "")))
+            .where(eq(integrations.storeUrl, normalizedSource))
             .limit(1);
 
         const integration = results[0];
@@ -65,7 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 const handle = await woocommerceFulfillmentSync.trigger({
                     woocommerceOrderId: wcOrderId,
                     trackingNumber: trackingNumber || undefined,
-                    vendorStoreUrl: source.toString()
+                    vendorStoreUrl: normalizedSource
                 });
 
                 return res.status(200).json({ success: true, handleId: handle.id });

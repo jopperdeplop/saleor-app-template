@@ -11,6 +11,10 @@ export function logDebug(msg: string, obj?: any) {
     }
 }
 
+export function normalizeUrl(url: string): string {
+    return url.replace(/\/$/, "").trim().toLowerCase();
+}
+
 export interface OrderLine {
     id: string;
     variant: {
