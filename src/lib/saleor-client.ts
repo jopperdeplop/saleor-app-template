@@ -54,6 +54,7 @@ query GetOrderDetails($id: ID!) {
       id
       productName
       quantity
+      unitPrice { gross { amount } }
       variant {
         id
         sku

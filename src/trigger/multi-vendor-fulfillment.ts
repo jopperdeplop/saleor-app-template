@@ -405,7 +405,7 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         register_sale_products: lines.map(line => ({
             product_id: line.variant?.externalReference || line.variant?.sku,
             quantity: line.quantity,
-            price: line.unitPrice.gross.amount,
+            price: line.unitPrice?.gross?.amount ?? 0,
             tax: 0,
             tax_id: "default"
         })),
