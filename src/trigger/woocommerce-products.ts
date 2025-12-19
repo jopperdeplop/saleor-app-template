@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V5-1610";
+const SYNC_VERSION = "LITERAL-CLONE-V6-1615";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -72,7 +72,7 @@ export const woocommerceProductSync = task({
             'Content-Type': 'application/json'
         };
 
-        // Helper: Centralized Fetch (SMART VERSION)
+        // Helper: Centralized Fetch (RESILIENT TO 400 ERRORS)
         const saleorFetch = async (query: string, variables: any = {}) => {
             try {
                 const res = await fetch(apiUrl, {
@@ -80,11 +80,10 @@ export const woocommerceProductSync = task({
                     headers: saleorHeaders,
                     body: JSON.stringify({ query, variables })
                 });
-                if (!res.ok) {
-                    console.error(`   ❌ Saleor HTTP ${res.status}:`, await res.text());
-                    return {};
-                }
+
+                // Parse JSON regardless of status to handle GraphQL schema errors (HTTP 400)
                 const json: any = await res.json();
+
                 if (json.errors) {
                     const isSchemaError = json.errors[0]?.message?.includes("Cannot query field");
                     if (isSchemaError) {
@@ -127,7 +126,7 @@ export const woocommerceProductSync = task({
         const products = await wcRes.json();
         console.log(`   📦 Fetched ${products.length} products.`);
 
-        // --- 3. CORE SYNC FUNCTIONS (RESILIENT VERSION) ---
+        // --- 3. CORE SYNC FUNCTIONS ---
 
         const getSaleorChannels = async () => {
             const query = `{ channels { id slug currencyCode isActive } }`;
@@ -170,6 +169,18 @@ export const woocommerceProductSync = task({
             if (existing) return existing.id;
 
             console.log(`   🏭 Attempting Warehouse Creation for: "${vendorName}"`);
+
+            // --- SCHEMA PROBE (Diagnostic) ---
+            const probe = await saleorFetch(`{ __type(name: "Mutation") { fields { name } } }`);
+            const mutations = probe.data?.__type?.fields?.map((f: any) => f.name) || [];
+            if (mutations.length > 0) {
+                const whMutations = mutations.filter((n: string) => n.toLowerCase().includes('warehouse'));
+                console.log(`   🔍 [PROBE] Available Warehouse Mutations: ${whMutations.join(', ') || 'NONE'}`);
+                console.log(`   🔍 [PROBE] Mutation Suggestions: ${mutations.filter((n: string) => n.includes('Create')).join(', ')}`);
+            } else {
+                console.warn(`   🔍 [PROBE] Could not list mutations. Please check token permissions.`);
+            }
+
             const inputs = {
                 name: `${vendorName} Warehouse`,
                 slug: slug,
@@ -178,12 +189,14 @@ export const woocommerceProductSync = task({
             };
 
             // Attempt 1: warehouseCreate (Modern 3.x)
-            let createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            let createRes = await saleorFetch(`mutation CreateW1($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
 
-            // Check if Attempt 1 failed specifically because the field is missing
-            if (!createRes.data?.warehouseCreate && createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\"")) {
-                console.log("   🔄 'warehouseCreate' not found in schema. Retrying with 'createWarehouse'...");
-                createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            // IF Attempt 1 failed with SCHEMA error OR returned no data, try Attempt 2
+            const failedAttempt1 = !createRes.data?.warehouseCreate || (createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\""));
+
+            if (failedAttempt1) {
+                console.log("   🔄 'warehouseCreate' failed or missing. Trying 'createWarehouse'...");
+                createRes = await saleorFetch(`mutation CreateW2($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
             }
 
             const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;

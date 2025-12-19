@@ -82,12 +82,12 @@ export const shopifyInventorySync = task({
                 const json: any = await res.json();
                 if (json.errors) {
                     const isSchemaError = json.errors[0]?.message?.includes("Cannot query field");
-                    if (isSchemaError) logger.error("   ❌ Saleor Schema Error:", json.errors[0].message);
-                    else logger.error("   ❌ Saleor Error:", JSON.stringify(json.errors[0]?.message || json.errors));
+                    if (isSchemaError) logger.error("   ❌ Saleor Schema Error:", { message: json.errors[0].message });
+                    else logger.error("   ❌ Saleor Error:", { errors: json.errors });
                 }
                 return json;
             } catch (e) {
-                logger.error("   ❌ Network Error during Saleor Request:", e);
+                logger.error("   ❌ Network Error during Saleor Request:", { error: e instanceof Error ? e.message : e });
                 return {};
             }
         };

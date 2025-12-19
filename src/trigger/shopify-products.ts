@@ -3,6 +3,9 @@ import { db } from "../db";
 import { integrations } from "../db/schema";
 import { eq } from "drizzle-orm";
 
+// --- VERSIONING FOR VERIFICATION ---
+const SYNC_VERSION = "LITERAL-CLONE-V6-1615";
+
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
 const BRAND_ATTRIBUTE_ID = process.env.SALEOR_BRAND_ATTRIBUTE_ID;
@@ -11,7 +14,7 @@ const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID;
 const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID;
 const PHOTOROOM_API_KEY = process.env.PHOTOROOM_API_KEY;
 
-// --- HELPERS (Mirrored from Script) ---
+// --- HELPERS ---
 
 function textToEditorJs(text: string) {
     const cleanText = text ? text.replace(/\n/g, "<br>") : "";
@@ -22,7 +25,6 @@ function textToEditorJs(text: string) {
     });
 }
 
-// Default Address
 const DEFAULT_VENDOR_ADDRESS = {
     firstName: "Logistics",
     lastName: "Manager",
@@ -39,36 +41,36 @@ const DEFAULT_VENDOR_ADDRESS = {
 export const shopifyProductSync = task({
     id: "shopify-product-sync",
     run: async (payload: { integrationId: number }) => {
+        console.log(`🚀 [${SYNC_VERSION}] Execution Start. Integration: ${payload.integrationId}`);
+
         // --- 1. SETUP & AUTH ---
         const integration = await db.query.integrations.findFirst({ where: eq(integrations.id, payload.integrationId) });
         if (!integration) throw new Error("Integration not found");
         if (integration.provider !== "shopify") {
-            console.warn(`⚠️ skipping: Integration ${payload.integrationId} is not Shopify (provider: ${integration.provider})`);
+            console.warn(`⚠️ skipping: Not Shopify`);
             return;
         }
 
         const apiUrl = process.env.SALEOR_API_URL;
         let saleorToken = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
-        // Robust Bearer handling (matching script approach)
-        if (saleorToken) {
-            saleorToken = `Bearer ${saleorToken.replace(/^bearer\s+/i, "")}`;
-        }
-
-        if (!apiUrl || !saleorToken) throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
 
         // --- 🩺 TOKEN VERIFICATION (MASKED) ---
         if (saleorToken) {
             const start = saleorToken.substring(0, 5);
             const end = saleorToken.substring(saleorToken.length - 5);
             console.log(`🔑 [SECURITY] Using Saleor Token: ${start}...${end} (Length: ${saleorToken.length})`);
+            saleorToken = `Bearer ${saleorToken.replace(/^bearer\s+/i, "")}`;
         }
+
+        if (!apiUrl || !saleorToken) throw new Error("Missing SALEOR_API_URL or SALEOR_TOKEN");
+        console.log(`🌐 [ENV] SALEOR_API_URL: ${apiUrl}`);
 
         const saleorHeaders = {
             'Authorization': saleorToken,
             'Content-Type': 'application/json'
         };
 
-        // Helper: Centralized Fetch
+        // Helper: Centralized Fetch (RESILIENT TO 400 ERRORS)
         const saleorFetch = async (query: string, variables: any = {}) => {
             try {
                 const res = await fetch(apiUrl, {
@@ -76,13 +78,11 @@ export const shopifyProductSync = task({
                     headers: saleorHeaders,
                     body: JSON.stringify({ query, variables })
                 });
-                if (!res.ok) {
-                    console.error(`   ❌ Saleor HTTP ${res.status}:`, await res.text());
-                    return {};
-                }
+
+                // Saleor returns 400 for structural errors. We MUST parse to handle fallback.
                 const json: any = await res.json();
+
                 if (json.errors) {
-                    // Specific check for schema errors to log available fields
                     const isSchemaError = json.errors[0]?.message?.includes("Cannot query field");
                     if (isSchemaError) {
                         console.error("   ❌ Saleor Schema Error:", json.errors[0].message);
@@ -126,7 +126,7 @@ export const shopifyProductSync = task({
             console.log(`   ℹ️  Loose mode found ${products.length} products.`);
         }
 
-        // --- 3. CORE SYNC FUNCTIONS (Matched to Script) ---
+        // --- 3. CORE SYNC FUNCTIONS ---
 
         const getSaleorChannels = async () => {
             const query = `{ channels { id slug currencyCode isActive } }`;
@@ -170,7 +170,17 @@ export const shopifyProductSync = task({
 
             console.log(`   🏭 Attempting Warehouse Creation for: "${vendorName}"`);
 
-            // --- RESILIENT MUTATION LOGIC ---
+            // --- SCHEMA PROBE (Diagnostic) ---
+            const probe = await saleorFetch(`{ __type(name: "Mutation") { fields { name } } }`);
+            const mutations = probe.data?.__type?.fields?.map((f: any) => f.name) || [];
+            if (mutations.length > 0) {
+                const whMutations = mutations.filter((n: string) => n.toLowerCase().includes('warehouse'));
+                console.log(`   🔍 [PROBE] Available Warehouse Mutations: ${whMutations.join(', ') || 'NONE'}`);
+                console.log(`   🔍 [PROBE] Mutation Suggestions: ${mutations.filter((n: string) => n.includes('Create')).join(', ')}`);
+            } else {
+                console.warn(`   🔍 [PROBE] Could not list mutations. Please check token permissions.`);
+            }
+
             const inputs = {
                 name: `${vendorName} Warehouse`,
                 slug: slug,
@@ -179,12 +189,14 @@ export const shopifyProductSync = task({
             };
 
             // Attempt 1: warehouseCreate (Modern 3.x)
-            let createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            let createRes = await saleorFetch(`mutation CreateW1($input:WarehouseCreateInput!){warehouseCreate(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
 
-            // Check if Attempt 1 failed specifically because the field is missing
-            if (!createRes.data?.warehouseCreate && createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\"")) {
-                console.log("   🔄 'warehouseCreate' not found in schema. Retrying with 'createWarehouse'...");
-                createRes = await saleorFetch(`mutation CreateW($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
+            // IF Attempt 1 failed with SCHEMA error OR returned no data, try Attempt 2
+            const failedAttempt1 = !createRes.data?.warehouseCreate || (createRes.errors?.[0]?.message?.includes("Cannot query field \"warehouseCreate\""));
+
+            if (failedAttempt1) {
+                console.log("   🔄 'warehouseCreate' failed or missing. Trying 'createWarehouse'...");
+                createRes = await saleorFetch(`mutation CreateW2($input:WarehouseCreateInput!){createWarehouse(input:$input){warehouse{id} errors{field message}}}`, { input: inputs });
             }
 
             const result = createRes.data?.warehouseCreate || createRes.data?.createWarehouse;
@@ -222,17 +234,17 @@ export const shopifyProductSync = task({
             const mediaRes = await saleorFetch(`query GetMedia($id:ID!){product(id:$id){media{id}}}`, { id: productId });
             const existingMedia = mediaRes.data?.product?.media || [];
 
-            // 2. Delete Existing Media (Ensures we replace, not just append)
+            // 2. Delete Existing Media
             if (existingMedia.length > 0) {
-                console.log(`      🧹 Deleting ${existingMedia.length} existing images to replace...`);
+                console.log(`      🧹 Deleting ${existingMedia.length} existing images...`);
                 for (const media of existingMedia) {
                     await saleorFetch(`mutation DelMedia($id:ID!){productMediaDelete(id:$id){errors{field message}}}`, { id: media.id });
                 }
             }
 
+            const photoroomKey = PHOTOROOM_API_KEY;
             let imageBlob: Blob | null = null;
-
-            if (PHOTOROOM_API_KEY) {
+            if (photoroomKey) {
                 try {
                     const shopifyImgRes = await fetch(imageUrl);
                     if (shopifyImgRes.ok) {
@@ -241,17 +253,12 @@ export const shopifyProductSync = task({
                         formData.append("image_file", originalBlob, "original.jpg");
                         formData.append("background.color", "FFFFFF");
                         formData.append("format", "webp");
-
                         const prRes = await fetch("https://sdk.photoroom.com/v1/segment", {
                             method: "POST",
-                            headers: { "x-api-key": PHOTOROOM_API_KEY },
+                            headers: { "x-api-key": photoroomKey },
                             body: formData
                         });
-
-                        if (prRes.ok) {
-                            imageBlob = await prRes.blob();
-                            console.log("      ✨ Photoroom processed successfully.");
-                        }
+                        if (prRes.ok) imageBlob = await prRes.blob();
                     }
                 } catch (e) {
                     console.error("      ❌ Photoroom error:", e);
@@ -267,25 +274,11 @@ export const shopifyProductSync = task({
                 fd.append("operations", JSON.stringify(ops));
                 fd.append("map", JSON.stringify({ "0": ["variables.i"] }));
                 fd.append("0", imageBlob, "image.webp");
-
-                const upRes = await fetch(apiUrl!, { method: 'POST', headers: { 'Authorization': saleorToken }, body: fd });
-                const upJson: any = await upRes.json();
-                if (upJson.data?.productMediaCreate?.errors?.length > 0) {
-                    console.error("      ❌ Media Multipart Upload Failed:", JSON.stringify(upJson.data.productMediaCreate.errors));
-                } else {
-                    console.log("      ✅ Image replaced via Photoroom Blob.");
-                }
+                await fetch(apiUrl!, { method: 'POST', headers: { 'Authorization': saleorToken }, body: fd });
             } else {
-                // Fallback to URL
-                console.log("      ℹ️ Photoroom skipped/failed. Falling back to original URL upload...");
-                const res = await saleorFetch(`mutation AddMedia($id: ID!, $url: String!, $alt: String) { productMediaCreate(input: { product: $id, mediaUrl: $url, alt: $alt }) { media { id } errors { field message } } }`, {
+                await saleorFetch(`mutation AddMedia($id: ID!, $url: String!, $alt: String) { productMediaCreate(input: { product: $id, mediaUrl: $url, alt: $alt }) { media { id } errors { field message } } }`, {
                     id: productId, url: imageUrl, alt: title
                 });
-                if (res.data?.productMediaCreate?.errors?.length > 0) {
-                    console.error("      ❌ Media URL Fallback Failed:", JSON.stringify(res.data.productMediaCreate.errors));
-                } else {
-                    console.log("      ✅ Image replaced via URL.");
-                }
             }
         }
 
@@ -295,51 +288,25 @@ export const shopifyProductSync = task({
         // --- 4. PARALLEL PROCESSING ---
         console.log(`📦 Parallel Sync for ${products.length} products...`);
 
-        await Promise.all(products.map(async (edge: any) => {
-            const p = edge.node;
-
-            // 1. Warehouse & Brand
-            const brandPageId = await getOrCreateBrandPage(p.vendor);
-            let targetWarehouseId = await getOrCreateWarehouse(p.vendor, channels);
+        await Promise.all(products.map(async (pEdge: any) => {
+            const p = pEdge.node;
+            const brandPageId = await getOrCreateBrandPage(p.vendor || "Default");
+            let targetWarehouseId = await getOrCreateWarehouse(p.vendor || "Default", channels);
             if (!targetWarehouseId) targetWarehouseId = DEFAULT_WAREHOUSE_ID;
 
-            // 2. Find or Create Product
             let finalProductId: string | null = null;
-
-            // Deterministic Deduplication Check
             const cleanTitle = p.title.trim();
-            const predictableSlug = cleanTitle.toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-+|-+$/g, '');
+            const predictableSlug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-            // A. Check by Slug (Direct DB lookup - MOST RELIABLE, bypasses index lag)
             const slugCheck = await saleorFetch(`query FindSlug($s:String!){product(slug:$s){id}}`, { s: predictableSlug });
             finalProductId = slugCheck.data?.product?.id;
-
-            // B. Fallback: Check by Name Search (If slug differs but name matches)
-            if (!finalProductId) {
-                const searchRes = await saleorFetch(`query FindName($n:String!){products(filter:{search:$n},first:5){edges{node{id name}}}}`, { n: cleanTitle });
-                const foundItems = searchRes.data?.products?.edges || [];
-                for (const item of foundItems) {
-                    if (item.node.name?.trim() === cleanTitle) {
-                        finalProductId = item.node.id;
-                        break;
-                    }
-                }
-            }
-
-            if (finalProductId) {
-                console.log(`✨ Syncing existing: "${cleanTitle}" (${finalProductId})`);
-            } else {
-                console.log(`➕ Creating new: "${cleanTitle}" (Slug: ${predictableSlug})`);
-            }
 
             if (!finalProductId) {
                 const createProdRes = await saleorFetch(`mutation Create($input:ProductCreateInput!){productCreate(input:$input){product{id} errors{field message}}}`, {
                     input: {
                         name: p.title,
                         slug: predictableSlug,
-                        externalReference: p.id,
+                        externalReference: p.id.split('/').pop(),
                         productType: PRODUCT_TYPE_ID,
                         category: CATEGORY_ID,
                         description: textToEditorJs(p.descriptionHtml || p.title)
@@ -347,19 +314,17 @@ export const shopifyProductSync = task({
                 });
                 finalProductId = createProdRes.data?.productCreate?.product?.id;
             } else {
-                // Update existing product description
                 await saleorFetch(`mutation Update($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field message}}}`, {
                     id: finalProductId,
                     input: {
                         description: textToEditorJs(p.descriptionHtml || p.title),
-                        externalReference: p.id
+                        externalReference: p.id.split('/').pop()
                     }
                 });
             }
 
             if (!finalProductId) return;
 
-            // 2.1 Assign Brand Attribute
             if (brandPageId && BRAND_ATTRIBUTE_ID) {
                 await saleorFetch(`mutation UpdateProd($id:ID!,$input:ProductInput!){productUpdate(id:$id,input:$input){errors{field message}}}`, {
                     id: finalProductId,
@@ -367,7 +332,6 @@ export const shopifyProductSync = task({
                 });
             }
 
-            // 3. Channel Listing
             const dateStr = new Date().toISOString().split('T')[0];
             const channelListings = channels.map((ch: any) => ({
                 channelId: ch.id,
@@ -382,45 +346,35 @@ export const shopifyProductSync = task({
                 input: { updateChannels: channelListings }
             });
 
-            // 4. Image
-            const imgUrl = p.images?.edges?.[0]?.node?.url;
-            if (imgUrl) {
-                await processImage(finalProductId, imgUrl, p.title);
+            if (p.images?.edges?.[0]?.node?.url) {
+                await processImage(finalProductId, p.images.edges[0].node.url, p.title);
             }
 
-            // 5. Variants Replacement & Sync
+            const variants = p.variants?.edges || [];
             const existingVarData = await saleorFetch(`query GetVars($id:ID!){product(id:$id){variants{id sku}}}`, { id: finalProductId });
             const existingVariants = existingVarData.data?.product?.variants || [];
-
             if (existingVariants.length > 0) {
-                console.log(`      🧹 Deleting ${existingVariants.length} existing variants for replacement...`);
-                const varIdsToDelete = existingVariants.map((v: any) => v.id);
-                await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: varIdsToDelete });
+                await saleorFetch(`mutation BulkDelete($ids:[ID!]!){productVariantBulkDelete(ids:$ids){errors{field message}}}`, { ids: existingVariants.map((v: any) => v.id) });
             }
 
-            for (const vEdge of p.variants.edges) {
+            for (const vEdge of variants) {
                 const v = vEdge.node;
-                // Extract the numerical ID (e.g., 50652173928885) from the GID
-                const shopifyNumericId = v.id ? v.id.split('/').pop() : null;
-                const sku = shopifyNumericId || `VAR-${Math.random().toString(36).substring(7)}`;
-
+                const sku = v.sku || v.id.split('/').pop() || "";
                 const varRes = await saleorFetch(`mutation CreateVar($input:ProductVariantCreateInput!){productVariantCreate(input:$input){productVariant{id} errors{field message}}}`, {
                     input: {
                         product: finalProductId,
                         sku: sku,
                         name: v.title || "Default",
-                        externalReference: v.id,
+                        externalReference: v.id.split('/').pop(),
                         attributes: [],
                         trackInventory: true,
-                        stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity: v.inventoryQuantity }] : []
+                        stocks: targetWarehouseId ? [{ warehouse: targetWarehouseId, quantity: v.inventoryQuantity || 0 }] : []
                     }
                 });
                 const variantId = varRes.data?.productVariantCreate?.productVariant?.id;
-
                 if (variantId) {
-                    const shopifyPrice = parseFloat(v.price || "0");
                     const priceListings = channels.map((ch: any) => ({
-                        channelId: ch.id, price: shopifyPrice, costPrice: shopifyPrice
+                        channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
                     }));
                     await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
                         id: variantId, input: priceListings
@@ -429,7 +383,6 @@ export const shopifyProductSync = task({
             }
         }));
 
-        console.log(`✅ ${products.length} products synced successfully.`);
+        console.log(`✅ [${SYNC_VERSION}] Shopify sync finished.`);
     }
 });
-
