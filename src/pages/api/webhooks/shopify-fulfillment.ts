@@ -4,6 +4,7 @@ import { shopifyFulfillmentSync } from '@/trigger/shopify-fulfillment-sync';
 import { db } from '@/db';
 import { integrations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { decrypt } from '@/lib/encryption';
 
 export const config = {
     api: { bodyParser: false },
@@ -19,93 +20,85 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
     try {
-        console.info("🛠️ [Webhook Handler] v3.1 (Select Fix + Logging) - Handler invoked");
-        console.info(`   🌍 [Webhook Handler] Environment check: POSTGRES_URL: ${process.env.POSTGRES_URL ? 'PRESENT' : 'MISSING'}, SHOPIFY_WEBHOOK_SECRET: ${process.env.SHOPIFY_WEBHOOK_SECRET ? 'PRESENT' : 'MISSING'}`);
-
         const rawBody = await getRawBody(req);
-        console.info(`   🔍 [Webhook Handler] Raw body length: ${rawBody.length}`);
-
         const hmac = req.headers['x-shopify-hmac-sha256'];
         const topic = req.headers['x-shopify-topic'];
         const shopDomain = req.headers['x-shopify-shop-domain'];
 
-        console.info(`   📡 [Webhook Handler] Received webhook! Topic: ${topic} | Shop: ${shopDomain} | HMAC: ${hmac ? 'Present' : 'Missing'}`);
+        console.info(`📡 [Webhook Handler] Incoming: ${topic} | Shop: ${shopDomain}`);
 
-        // Secret Check (Global or Dynamic)
+        // 1. Secret Resolution (Global -> Dynamic DB)
         let secret = process.env.SHOPIFY_WEBHOOK_SECRET;
 
-        // If no global secret, try to find one per-vendor in the DB
         if (!secret && shopDomain) {
             try {
                 if (!process.env.POSTGRES_URL) {
-                    throw new Error("POSTGRES_URL is not defined in environment variables.");
-                }
+                    console.warn("⚠️ [Webhook Handler] POSTGRES_URL missing. Cannot perform dynamic lookup.");
+                } else {
+                    const results = await db.select()
+                        .from(integrations)
+                        .where(eq(integrations.storeUrl, shopDomain.toString()))
+                        .limit(1);
 
-                const results = await db.select()
-                    .from(integrations)
-                    .where(eq(integrations.storeUrl, shopDomain.toString()))
-                    .limit(1);
+                    const integration = results[0];
+                    const settings = integration?.settings as any;
+                    let candidateSecret = settings?.webhookSecret;
 
-                const integration = results[0];
-                const settings = integration?.settings as any;
-                secret = settings?.webhookSecret;
-
-                if (secret) {
-                    console.info(`   🔑 [Webhook Handler] Using dynamic secret for store: ${shopDomain}`);
+                    if (candidateSecret) {
+                        // Attempt to decrypt if it looks like encrypted format (iv:tag:data)
+                        if (candidateSecret.includes(':')) {
+                            try {
+                                secret = decrypt(candidateSecret);
+                                console.info(`✅ [Webhook Handler] Verified using decrypted secret for ${shopDomain}`);
+                            } catch (e) {
+                                console.warn(`⚠️ [Webhook Handler] Decryption failed for ${shopDomain}. Using as plain-text.`);
+                                secret = candidateSecret;
+                            }
+                        } else {
+                            secret = candidateSecret;
+                            console.info(`ℹ️ [Webhook Handler] Using plain-text secret for ${shopDomain}`);
+                        }
+                    }
                 }
             } catch (dbError: any) {
-                console.warn(`   ⚠️ [Webhook Handler] Database Lookup Failed: ${dbError.message}. Proceeding without verification.`);
-                // Note: We don't throw here, so the webhook can still trigger the task (unverified)
+                console.warn(`⚠️ [Webhook Handler] DB Error: ${dbError.message}. Proceeding unverified.`);
             }
         }
 
+        // 2. HMAC Verification
         if (secret && hmac) {
             const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
             if (hash !== hmac) {
-                console.error(`   ⛔ [Webhook Handler] HMAC Verification Failed! Store: ${shopDomain}`);
+                console.error(`⛔ [Webhook Handler] HMAC mismatch for ${shopDomain}`);
                 return res.status(401).send('HMAC verification failed');
             }
-            console.info(`   ✅ [Webhook Handler] HMAC Verified.`);
         } else if (!secret) {
-            console.warn(`   ⚠️ [Webhook Handler] No valid secret (Global or DB) found for store ${shopDomain}. Processing unverified.`);
+            console.warn(`⚠️ [Webhook Handler] No secret found for ${shopDomain}. PROCESSING UNVERIFIED (Security Risk).`);
         }
 
         const payload = JSON.parse(rawBody.toString());
-        console.info(`   📝 [Webhook Handler] Payload parsed. Keys: ${Object.keys(payload).join(', ')}`);
 
-        // Topic: fulfillments/create
+        // 3. Logic Processing
         if (topic === 'fulfillments/create') {
             const shopifyOrderId = payload.order_id?.toString();
-            // Handle both string and array formats for tracking
             const trackingNumber = payload.tracking_number || (Array.isArray(payload.tracking_numbers) ? payload.tracking_numbers[0] : null);
             const trackingUrl = payload.tracking_url || (Array.isArray(payload.tracking_urls) ? payload.tracking_urls[0] : null);
 
-            console.info(`   📦 [Webhook Handler] Data Extracted -> OrderID: ${shopifyOrderId}, Tracking: ${trackingNumber}`);
-
             if (shopifyOrderId) {
-                console.info(`   🚀 [Webhook Handler] Triggering Sync Task for Order #${shopifyOrderId}...`);
-
                 const handle = await shopifyFulfillmentSync.trigger({
-                    shopifyOrderId: shopifyOrderId,
+                    shopifyOrderId,
                     trackingNumber: trackingNumber || undefined,
                     trackingUrl: trackingUrl || undefined,
                     vendorStoreUrl: shopDomain?.toString() || ""
                 });
 
-                console.info(`   ✅ [Webhook Handler] Task Triggered! Handle ID: ${handle.id}`);
                 return res.status(200).json({ success: true, handleId: handle.id });
-            } else {
-                console.warn(`   ⚠️ [Webhook Handler] Missing 'order_id' or 'admin_graphql_api_id' in payload.`);
-                return res.status(200).json({ ignored: true, reason: "missing_order_id" });
             }
-        } else {
-            console.info(`   ℹ️ [Webhook Handler] Ignoring topic: ${topic}`);
         }
 
-        res.status(200).send('Webhook Received');
+        res.status(200).send('OK');
     } catch (error: any) {
-        console.error("   ❌ [Webhook Handler] Handler Error (Full):", error);
-        if (error.stack) console.error("   ❌ [Webhook Handler] Error Stack:", error.stack);
+        console.error("❌ [Webhook Handler] Fatal Error:", error);
         res.status(500).send('Internal Error');
     }
 }
