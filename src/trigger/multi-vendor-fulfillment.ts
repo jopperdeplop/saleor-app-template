@@ -217,12 +217,23 @@ async function ensureWooCommerceWebhook(integration: any) {
 
     if (!consumerKey || !consumerSecret) return;
 
-    // 1. Secret Management
+    // 1. Secret Management & URL Normalization
     const normalizedStoreUrl = normalizeUrl(integration.storeUrl);
+
+    // Proactively normalize the URL in the DB if it's not already
+    if (integration.storeUrl !== normalizedStoreUrl) {
+        logDebug(`      📏 Normalizing Store URL in DB: ${integration.storeUrl} -> ${normalizedStoreUrl}`);
+        await db.update(integrations)
+            .set({ storeUrl: normalizedStoreUrl })
+            .where(eq(integrations.id, integration.id));
+    }
+
     let webhookSecret = settings.webhookSecret;
+    let justGenerated = false;
     if (!webhookSecret) {
         logDebug(`      🔐 Generating new WooCommerce Webhook Secret for ${normalizedStoreUrl}...`);
         webhookSecret = crypto.randomBytes(32).toString('hex');
+        justGenerated = true;
 
         // Save back to DB
         await db.update(integrations)
@@ -242,22 +253,36 @@ async function ensureWooCommerceWebhook(integration: any) {
         const topic = "order.updated";
         const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.topic === topic && normalizeUrl(w.delivery_url) === normalizeUrl(webhookUrl)) : null;
 
-        if (!existing) {
-            logDebug(`      🛠️ Registering WooCommerce webhook for ${normalizedStoreUrl}...`);
-            await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${auth}`
-                },
-                body: JSON.stringify({
-                    name: "Marketplace Fulfillment Sync",
-                    topic: topic,
-                    delivery_url: webhookUrl,
-                    status: "active",
-                    secret: webhookSecret // Use our secret
-                })
-            });
+        if (!existing || justGenerated) {
+            if (justGenerated && existing) {
+                logDebug(`      🛡️ Updating WooCommerce webhook secret for ${normalizedStoreUrl}...`);
+                await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks/${existing.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${auth}`
+                    },
+                    body: JSON.stringify({
+                        secret: webhookSecret
+                    })
+                });
+            } else if (!existing) {
+                logDebug(`      🛠️ Registering WooCommerce webhook for ${normalizedStoreUrl}...`);
+                await fetch(`${normalizedStoreUrl}/wp-json/wc/v3/webhooks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${auth}`
+                    },
+                    body: JSON.stringify({
+                        name: "Marketplace Fulfillment Sync",
+                        topic: topic,
+                        delivery_url: webhookUrl,
+                        status: "active",
+                        secret: webhookSecret // Use our secret
+                    })
+                });
+            }
         }
     } catch (e) {
         logDebug(`      ⚠️ Failed to ensure WooCommerce webhook for ${normalizedStoreUrl}: ${e instanceof Error ? e.message : String(e)}`);

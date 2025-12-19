@@ -4,7 +4,7 @@ import { woocommerceFulfillmentSync } from '@/trigger/woocommerce-fulfillment-sy
 import { normalizeUrl } from '@/lib/utils';
 import { db } from '@/db';
 import { integrations } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql, or } from 'drizzle-orm';
 
 export const config = {
     api: { bodyParser: false },
@@ -32,15 +32,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(401).send('Unauthorized');
         }
 
-        // 1. Resolve Secret from DB
+        // 1. Resolve Secret from DB (Resilient Slash Matching)
         const normalizedSource = normalizeUrl(source.toString());
+        const cleanSource = normalizedSource.replace(/\/+$/, "");
+
         const results = await db.select()
             .from(integrations)
-            .where(eq(integrations.storeUrl, normalizedSource))
+            .where(or(
+                eq(integrations.storeUrl, cleanSource),
+                eq(integrations.storeUrl, cleanSource + "/"),
+                eq(integrations.storeUrl, normalizedSource),
+                eq(integrations.storeUrl, normalizedSource + "/")
+            ))
             .limit(1);
 
         const integration = results[0];
         const secret = (integration?.settings as any)?.webhookSecret;
+
+        if (!integration) {
+            console.error(`❌ [WC Webhook] No integration found for ${source}`);
+            return res.status(404).json({ error: "Integration not found" });
+        }
 
         if (!secret) {
             console.warn(`⚠️ [WC Webhook] No secret found for ${source}. Processing unverified.`);
