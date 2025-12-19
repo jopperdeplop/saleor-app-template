@@ -397,10 +397,31 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         logDebug(`      ⚠️ Failed to fetch registers, falling back to 'default'.`);
     }
 
+    // 2. Fetch available users to get a valid UUID for user_id
+    let userId = "";
+    try {
+        const userRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/users`, {
+            headers: { 'Authorization': `Bearer ${integration.accessToken}` }
+        });
+        if (userRes.ok) {
+            const userData = await userRes.json();
+            // Try to find primary user, fallback to first user
+            const primaryUser = userData.data?.find((u: any) => u.is_primary_user);
+            userId = primaryUser?.id || userData.data?.[0]?.id;
+        }
+    } catch (e) {
+        logDebug(`      ⚠️ Failed to fetch users.`);
+    }
+
+    if (!userId) {
+        logDebug(`      ❌ Could not find a valid user_id for Lightspeed sale creation.`);
+        return null;
+    }
+
     const payload = {
         register_id: registerId,
         state: "parked", // 0.9 API uses state: parked/pending/voided/closed
-        user_id: "default",
+        user_id: userId,
         customer_id: null,
         register_sale_products: lines.map(line => ({
             product_id: line.variant?.externalReference || line.variant?.sku,
