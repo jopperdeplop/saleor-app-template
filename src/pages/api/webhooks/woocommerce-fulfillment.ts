@@ -1,10 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import crypto from 'crypto';
 import { woocommerceFulfillmentSync } from '@/trigger/woocommerce-fulfillment-sync';
 import { normalizeUrl } from '@/lib/utils';
 import { db } from '@/db';
 import { integrations, users } from '@/db/schema';
 import { eq, sql, or } from 'drizzle-orm';
+import crypto from 'crypto';
 
 export const config = {
     api: { bodyParser: false },
@@ -59,11 +59,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         const integration = results[0];
-        const secret = (integration.settings as any)?.webhookSecret;
+        let settings = (integration.settings as any) || {};
+        let secret = settings.webhookSecret;
         const brandSlug = integration.brandSlug ? integration.brandSlug.toLowerCase().replace(/[^a-z0-9]/g, '-') : null;
 
         if (!secret) {
-            console.warn(`⚠️ [WC Webhook] Integration found (ID: ${integration.id}, URL: ${integration.storeUrl}) but no webhookSecret in settings. Processing unverified.`);
+            console.warn(`⚠️ [WC Webhook] Integration found (ID: ${integration.id}) but no secret. Generating and saving one now...`);
+            secret = crypto.randomBytes(32).toString('hex');
+
+            // Persist the secret immediately
+            await db.update(integrations)
+                .set({ settings: { ...settings, webhookSecret: secret } })
+                .where(eq(integrations.id, integration.id));
+
+            console.info(`✅ [WC Webhook] Generated and persisted new secret for ID ${integration.id}. Future requests will be verified.`);
+            // We still process this one as unverified because the partner store doesn't have this secret yet
         } else {
             // 2. HMAC Verification
             const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
