@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { woocommerceFulfillmentSync } from '@/trigger/woocommerce-fulfillment-sync';
 import { normalizeUrl } from '@/lib/utils';
 import { db } from '@/db';
-import { integrations } from '@/db/schema';
+import { integrations, users } from '@/db/schema';
 import { eq, sql, or } from 'drizzle-orm';
 
 export const config = {
@@ -32,30 +32,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(401).send('Unauthorized');
         }
 
-        // 1. Resolve Secret from DB (Resilient Slash Matching)
+        // 1. Resolve Integration & Secret with Protocol-Agnostic Matching
         const normalizedSource = normalizeUrl(source.toString());
-        const cleanSource = normalizedSource.replace(/\/+$/, "");
+        const cleanSource = normalizedSource.replace(/^(https?:\/\/)?(www\.)?/, "").replace(/\/+$/, "");
 
-        const results = await db.select()
+        console.info(`🔍 [WC Webhook] Searching for integration with clean domain: ${cleanSource}`);
+
+        const results = await db.select({
+            id: integrations.id,
+            storeUrl: integrations.storeUrl,
+            settings: integrations.settings,
+            brandSlug: users.brand
+        })
             .from(integrations)
-            .where(or(
-                eq(integrations.storeUrl, cleanSource),
-                eq(integrations.storeUrl, cleanSource + "/"),
-                eq(integrations.storeUrl, normalizedSource),
-                eq(integrations.storeUrl, normalizedSource + "/")
-            ))
-            .limit(1);
+            .innerJoin(users, eq(integrations.userId, users.id))
+            .where(sql`LOWER(REPLACE(REPLACE(REPLACE(${integrations.storeUrl}, 'https://', ''), 'http://', ''), 'www.', '')) = ${cleanSource}`)
+            .limit(5); // Check for dupes
 
-        const integration = results[0];
-        const secret = (integration?.settings as any)?.webhookSecret;
-
-        if (!integration) {
-            console.error(`❌ [WC Webhook] No integration found for ${source}`);
+        if (results.length === 0) {
+            console.error(`❌ [WC Webhook] No integration found for domain: ${cleanSource} (Raw Header: ${source})`);
             return res.status(404).json({ error: "Integration not found" });
         }
 
+        if (results.length > 1) {
+            console.warn(`⚠️ [WC Webhook] Multiple integrations (${results.length}) found for domain: ${cleanSource}. Using the first one.`);
+        }
+
+        const integration = results[0];
+        const secret = (integration.settings as any)?.webhookSecret;
+        const brandSlug = integration.brandSlug ? integration.brandSlug.toLowerCase().replace(/[^a-z0-9]/g, '-') : null;
+
         if (!secret) {
-            console.warn(`⚠️ [WC Webhook] No secret found for ${source}. Processing unverified.`);
+            console.warn(`⚠️ [WC Webhook] Integration found (ID: ${integration.id}, URL: ${integration.storeUrl}) but no webhookSecret in settings. Processing unverified.`);
         } else {
             // 2. HMAC Verification
             const hash = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
@@ -79,7 +87,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 const handle = await woocommerceFulfillmentSync.trigger({
                     woocommerceOrderId: wcOrderId,
                     trackingNumber: trackingNumber || undefined,
-                    vendorStoreUrl: normalizedSource
+                    vendorStoreUrl: normalizedSource,
+                    brandSlug: brandSlug || undefined
                 });
 
                 return res.status(200).json({ success: true, handleId: handle.id });

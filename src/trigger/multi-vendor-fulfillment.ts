@@ -69,6 +69,10 @@ export const automateMultiVendorFulfillment = task({
                     mirrorOrderId = await createMirrorOrderOnWooCommerce(integration, order, lines);
                 }
 
+                // If this is a new integration or needs secret refresh, we should also trigger an initial sync check
+                // but for now we rely on the webhook.
+
+
                 if (mirrorOrderId) {
                     await client.mutation(UPDATE_ORDER_METADATA, {
                         id: order.id,
@@ -143,7 +147,8 @@ async function getVendorIntegration(brand: string) {
         accessToken: integrations.accessToken,
         storeUrl: integrations.storeUrl,
         provider: integrations.provider,
-        settings: integrations.settings
+        settings: integrations.settings,
+        brand: users.brand
     })
         .from(integrations)
         .innerJoin(users, eq(integrations.userId, users.id))

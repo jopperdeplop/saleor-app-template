@@ -12,7 +12,8 @@ export const woocommerceFulfillmentSync = task({
         woocommerceOrderId: string,
         trackingNumber?: string,
         trackingUrl?: string,
-        vendorStoreUrl: string
+        vendorStoreUrl: string,
+        brandSlug?: string
     }) => {
         logDebug(`🔄 [WooCommerce -> Saleor] Syncing Fulfillment for WC Order: ${payload.woocommerceOrderId} from ${payload.vendorStoreUrl}`);
 
@@ -36,7 +37,7 @@ export const woocommerceFulfillmentSync = task({
             logDebug(`   ⚠️ Could not find brand for store URL ${payload.vendorStoreUrl}.`);
         }
 
-        const brandSlug = brandName ? slugify(brandName) : null;
+        const brandSlug = payload.brandSlug || (brandName ? slugify(brandName) : null);
         const metadataKey = brandSlug ? `woocommerce_order_id_${brandSlug}` : null;
 
         logDebug(`   🎯 Target Metadata Key: ${metadataKey || '(Broad Search)'} | Value: ${payload.woocommerceOrderId}`);
