@@ -75,7 +75,8 @@ export const automateMultiVendorFulfillment = task({
 // --- HELPERS ---
 
 async function ensureShopifyFulfillmentWebhook(integration: any) {
-    const appUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://partner.salp.shop");
+    // 100% Ensure this points to the App project's fulfillment endpoint, NOT the portal.
+    const appUrl = process.env.SHOPIFY_WEBHOOK_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://saleor-app-template-seven.vercel.app");
     const webhookUrl = `${appUrl}/api/webhooks/shopify-fulfillment`;
     const topic = "fulfillments/create";
 
