@@ -42,12 +42,14 @@ export const automateMultiVendorFulfillment = task({
         for (const [vendor, lines] of vendorMap) {
             logDebug(`   🏭 Partner: ${vendor}`);
 
-            // A. Find Vendor Integration
+            logDebug(`   🔎 Checking integration for brand: "${vendor}"`);
             const integration = await getVendorIntegration(vendor);
+
             if (!integration) {
-                logDebug(`      ⚠️ No active integration for "${vendor}". Skipping mirror order.`);
+                logDebug(`   ⚠️ No active integration for brand: "${vendor}". Order skipping mirror routing.`);
                 continue;
             }
+            logDebug(`   ✅ Found ${integration.provider} integration for: "${vendor}"`);
 
             // B. Mirror Order Logic
             const provider = integration.provider;

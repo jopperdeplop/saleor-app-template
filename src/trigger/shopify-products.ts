@@ -1,10 +1,10 @@
 import { task } from "@trigger.dev/sdk";
 import { db } from "../db";
-import { integrations } from "../db/schema";
+import { integrations, users } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V11-PRICEFIX";
+const SYNC_VERSION = "LITERAL-CLONE-V12-BRANDFIX";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -44,8 +44,23 @@ export const shopifyProductSync = task({
         console.log(`🚀 [${SYNC_VERSION}] Execution Start. Integration: ${payload.integrationId}`);
 
         // --- 1. SETUP & AUTH ---
-        const integration = await db.query.integrations.findFirst({ where: eq(integrations.id, payload.integrationId) });
+        const integrationData = await db.select({
+            id: integrations.id,
+            accessToken: integrations.accessToken,
+            storeUrl: integrations.storeUrl,
+            provider: integrations.provider,
+            brandName: users.brand
+        })
+            .from(integrations)
+            .innerJoin(users, eq(integrations.userId, users.id))
+            .where(eq(integrations.id, payload.integrationId))
+            .limit(1);
+
+        const integration = integrationData[0];
         if (!integration) throw new Error("Integration not found");
+
+        const officialBrandName = integration.brandName;
+        console.log(`🏷️  Using Official Brand Name from DB: "${officialBrandName}"`);
         if (integration.provider !== "shopify") {
             console.warn(`⚠️ skipping: Not Shopify`);
             return;
@@ -271,7 +286,8 @@ export const shopifyProductSync = task({
         if (channels.length === 0) { console.error("❌ No Channels found."); return; }
 
         // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
-        const uniqueVendors: string[] = Array.from(new Set(products.map((p: any) => (p.node.vendor || "Default") as string)));
+        // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
+        const uniqueVendors: string[] = [officialBrandName];
         const vendorContext = new Map<string, { brandPageId: string | null, warehouseId: string | null }>();
 
         console.log(`   🏗️  Setting up context for ${uniqueVendors.length} unique vendors...`);
@@ -287,7 +303,7 @@ export const shopifyProductSync = task({
 
         await Promise.all(products.map(async (pEdge: any) => {
             const p = pEdge.node;
-            const vendorName = (p.vendor || "Default") as string;
+            const vendorName = officialBrandName;
             const context = vendorContext.get(vendorName);
             const brandPageId = context?.brandPageId;
             const targetWarehouseId = context?.warehouseId;

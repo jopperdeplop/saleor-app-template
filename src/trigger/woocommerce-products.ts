@@ -1,11 +1,11 @@
 import { task } from "@trigger.dev/sdk";
 import { db } from "../db";
-import { integrations } from "../db/schema";
+import { integrations, users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/encryption";
 
 // --- VERSIONING FOR VERIFICATION ---
-const SYNC_VERSION = "LITERAL-CLONE-V11-PRICEFIX";
+const SYNC_VERSION = "LITERAL-CLONE-V12-BRANDFIX";
 
 // --- CONFIGURATION FROM ENV ---
 const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
@@ -46,8 +46,24 @@ export const woocommerceProductSync = task({
         console.log(`🚀 [${SYNC_VERSION}] Execution Start. Integration: ${payload.integrationId}`);
 
         // --- 1. SETUP & AUTH ---
-        const integration = await db.query.integrations.findFirst({ where: eq(integrations.id, payload.integrationId) });
+        const integrationData = await db.select({
+            id: integrations.id,
+            accessToken: integrations.accessToken,
+            storeUrl: integrations.storeUrl,
+            provider: integrations.provider,
+            brandName: users.brand,
+            settings: integrations.settings
+        })
+            .from(integrations)
+            .innerJoin(users, eq(integrations.userId, users.id))
+            .where(eq(integrations.id, payload.integrationId))
+            .limit(1);
+
+        const integration = integrationData[0];
         if (!integration) throw new Error("Integration not found");
+
+        const officialBrandName = integration.brandName;
+        console.log(`🏷️  Using Official Brand Name from DB: "${officialBrandName}"`);
         if (integration.provider !== "woocommerce") {
             console.warn(`⚠️ skipping: Not WooCommerce`);
             return;
@@ -269,10 +285,10 @@ export const woocommerceProductSync = task({
         if (channels.length === 0) { console.error("❌ No Channels found."); return; }
 
         // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
-        const uniqueVendors = [storeName]; // WooCommerce is naturally single-vendor per site
+        const uniqueVendors = [officialBrandName]; // Use internal brand name
         const vendorContext = new Map<string, { brandPageId: string | null, warehouseId: string | null }>();
 
-        console.log(`   🏗️  Setting up context for ${uniqueVendors.length} unique vendors...`);
+        console.log(`   🏗️  Setting up context for ${uniqueVendors.length} unique vendors: ${uniqueVendors.join(", ")}`);
         for (const vendor of uniqueVendors) {
             const brandPageId = await getOrCreateBrandPage(vendor);
             let warehouseId = await getOrCreateWarehouse(vendor, channels);
@@ -284,7 +300,7 @@ export const woocommerceProductSync = task({
         console.log(`📦 Parallel Sync for ${products.length} products...`);
 
         await Promise.all(products.map(async (p: any) => {
-            const context = vendorContext.get(storeName);
+            const context = vendorContext.get(officialBrandName);
             const brandPageId = context?.brandPageId;
             const targetWarehouseId = context?.warehouseId;
 
