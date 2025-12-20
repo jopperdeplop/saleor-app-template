@@ -380,8 +380,7 @@ async function createMirrorOrderOnWooCommerce(integration: any, order: any, line
 async function createMirrorOrderOnLightspeed(integration: any, order: any, lines: any[]) {
     const domainPrefix = integration.storeUrl;
 
-    // Lightspeed X-Series 2.0 Register Sale Payload
-    // 1. Fetch available registers if 'default' is not a safe bet
+    // 1. Fetch available registers and find one that looks like a web/main register
     let registerId = "default";
     try {
         const regRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/registers`, {
@@ -389,9 +388,13 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         });
         if (regRes.ok) {
             const regData = await regRes.json();
-            if (regData.data?.[0]?.id) {
-                registerId = regData.data[0].id;
-            }
+            // Prefer a register with 'main' or 'web' in the name
+            const preferred = regData.data?.find((r: any) =>
+                r.name.toLowerCase().includes('main') ||
+                r.name.toLowerCase().includes('web') ||
+                r.name.toLowerCase().includes('ecommerce')
+            );
+            registerId = preferred?.id || regData.data?.[0]?.id || "default";
         }
     } catch (e) {
         logDebug(`      ⚠️ Failed to fetch registers, falling back to 'default'.`);
@@ -471,7 +474,7 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         });
         if (payRes.ok) {
             const payData = await payRes.json();
-            // Prefer "Cash" or "Credit Card" or just the first one
+            // Prefer "Saleor", "Marketplace", "Online", or "Card"
             const target = payData.data?.find((p: any) =>
                 p.name.toLowerCase().includes('saleor') ||
                 p.name.toLowerCase().includes('marketplace') ||
@@ -488,7 +491,7 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
 
     const payload: any = {
         register_id: registerId,
-        state: "closed",
+        state: "parked", // Use 'parked' for unfulfilled sales in 0.9, ensures fulfillment workflow
         fulfillment_status: "OPEN",
         is_web_order: true,
         user_id: userId,
