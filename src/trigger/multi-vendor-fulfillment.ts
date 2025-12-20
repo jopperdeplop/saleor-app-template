@@ -443,13 +443,18 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
                         body: JSON.stringify({
                             first_name: order.shippingAddress?.firstName || "Customer",
                             last_name: order.shippingAddress?.lastName || "Saleor",
-                            email: email
+                            email: email,
+                            physical_address1: order.shippingAddress?.streetAddress1 || "",
+                            physical_address2: order.shippingAddress?.streetAddress2 || "",
+                            physical_city: order.shippingAddress?.city || "",
+                            physical_postcode: order.shippingAddress?.postalCode || "",
+                            physical_country_id: order.shippingAddress?.country.code || ""
                         })
                     });
                     if (createRes.ok) {
                         const createData = await createRes.json();
                         customerId = createData.data?.id;
-                        logDebug(`      ✅ Created customer: ${customerId}`);
+                        logDebug(`      ✅ Created customer: ${customerId} with physical address`);
                     }
                 }
             }
@@ -478,7 +483,8 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
 
     const payload: any = {
         register_id: registerId,
-        state: "closed", // If we add payments, we can close it
+        state: "closed",
+        fulfillment_status: "OPEN", // Flags it for the fulfillment workflow
         user_id: userId,
         customer_id: customerId,
         register_sale_products: lines.map(line => ({
