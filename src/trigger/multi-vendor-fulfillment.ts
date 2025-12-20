@@ -491,31 +491,15 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
 
     const payload: any = {
         register_id: registerId,
-        state: "parked", // Use 'parked' for unfulfilled sales in 0.9, ensures fulfillment workflow
-        fulfillment_status: "OPEN",
-        is_web_order: true,
+        state: "parked", // Ensures the sale stays open in the fulfillment/shipping workflow
         user_id: userId,
         customer_id: customerId,
         register_sale_products: lines.map(line => ({
             product_id: line.variant?.externalReference || line.variant?.sku,
             quantity: line.quantity,
             price: line.unitPrice?.gross?.amount ?? 0,
-            tax: 0,
-            tax_id: "default"
+            tax: 0
         })),
-        shipping_address: order.shippingAddress ? {
-            first_name: order.shippingAddress.firstName,
-            last_name: order.shippingAddress.lastName,
-            address1: order.shippingAddress.streetAddress1,
-            address2: order.shippingAddress.streetAddress2,
-            city: order.shippingAddress.city,
-            postcode: order.shippingAddress.postalCode,
-            country_id: order.shippingAddress.country.code
-        } : undefined,
-        register_sale_attributes: [
-            { name: "delivery", value: "true" },
-            { name: "is_web_order", value: "true" }
-        ],
         note: `Saleor Order: ${order.number}`
     };
 
