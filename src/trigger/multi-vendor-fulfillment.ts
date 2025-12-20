@@ -451,7 +451,12 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
                             physical_address2: order.shippingAddress?.streetAddress2 || "",
                             physical_city: order.shippingAddress?.city || "",
                             physical_postcode: order.shippingAddress?.postalCode || "",
-                            physical_country_id: order.shippingAddress?.country.code || ""
+                            physical_country_id: order.shippingAddress?.country.code || "",
+                            postal_address1: order.shippingAddress?.streetAddress1 || "",
+                            postal_address2: order.shippingAddress?.streetAddress2 || "",
+                            postal_city: order.shippingAddress?.city || "",
+                            postal_postcode: order.shippingAddress?.postalCode || "",
+                            postal_country_id: order.shippingAddress?.country.code || ""
                         })
                     });
                     if (createRes.ok) {
@@ -500,6 +505,19 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
             price: line.unitPrice?.gross?.amount ?? 0,
             tax: 0
         })),
+        shipping_address: order.shippingAddress ? {
+            first_name: order.shippingAddress.firstName,
+            last_name: order.shippingAddress.lastName,
+            address1: order.shippingAddress.streetAddress1,
+            address2: order.shippingAddress.streetAddress2,
+            city: order.shippingAddress.city,
+            postcode: order.shippingAddress.postalCode,
+            country_id: order.shippingAddress.country.code
+        } : undefined,
+        register_sale_attributes: [
+            { name: "fulfillment_status", value: "OPEN" },
+            { name: "is_web_order", value: "true" }
+        ],
         note: `Saleor Order: ${order.number}`
     };
 
