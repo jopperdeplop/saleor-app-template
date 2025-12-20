@@ -512,6 +512,10 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
             postcode: order.shippingAddress.postalCode,
             country_id: order.shippingAddress.country.code
         } : undefined,
+        register_sale_attributes: [
+            { name: "delivery", value: "true" },
+            { name: "is_web_order", value: "true" }
+        ],
         note: `Saleor Order: ${order.number}`
     };
 
