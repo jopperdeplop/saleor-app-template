@@ -445,9 +445,11 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         });
 
         const json: any = await res.json();
-        if (res.ok && json.data?.id) {
-            logDebug(`      ✅ Lightspeed Mirror Sale created: ${json.data.id} on Register: ${registerId}`);
-            return json.data.id.toString();
+        const saleId = json.register_sale?.id || json.data?.id;
+
+        if (res.ok && saleId) {
+            logDebug(`      ✅ Lightspeed Mirror Sale created: ${saleId} on Register: ${registerId}`);
+            return saleId.toString();
         } else {
             logDebug(`      ❌ Lightspeed Sale Creation Failed:`, JSON.stringify(json));
             return null;
