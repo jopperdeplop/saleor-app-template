@@ -418,11 +418,69 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         return null;
     }
 
-    const payload = {
+    // 3. Find or Create Customer
+    let customerId = null;
+    try {
+        const email = order.userEmail;
+        if (email) {
+            logDebug(`      🔍 Searching for Lightspeed customer: ${email}`);
+            const searchRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/search?type=customers&email=${encodeURIComponent(email)}`, {
+                headers: { 'Authorization': `Bearer ${integration.accessToken}` }
+            });
+            if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                if (searchData.data?.[0]?.id) {
+                    customerId = searchData.data[0].id;
+                    logDebug(`      ✅ Found existing customer: ${customerId}`);
+                } else {
+                    logDebug(`      👤 Creating new customer in Lightspeed...`);
+                    const createRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/customers`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${integration.accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            first_name: order.shippingAddress?.firstName || "Customer",
+                            last_name: order.shippingAddress?.lastName || "Saleor",
+                            email: email
+                        })
+                    });
+                    if (createRes.ok) {
+                        const createData = await createRes.json();
+                        customerId = createData.data?.id;
+                        logDebug(`      ✅ Created customer: ${customerId}`);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        logDebug(`      ⚠️ Failed to sync customer.`);
+    }
+
+    // 4. Get Payment Type for "Paid" status
+    let paymentTypeId = null;
+    try {
+        const payRes = await fetch(`https://${domainPrefix}.retail.lightspeed.app/api/2.0/payment_types`, {
+            headers: { 'Authorization': `Bearer ${integration.accessToken}` }
+        });
+        if (payRes.ok) {
+            const payData = await payRes.json();
+            // Prefer "Cash" or "Credit Card" or just the first one
+            const target = payData.data?.find((p: any) => p.name.toLowerCase().includes('cash') || p.name.toLowerCase().includes('card')) || payData.data?.[0];
+            paymentTypeId = target?.id;
+        }
+    } catch (e) {
+        logDebug(`      ⚠️ Failed to fetch payment types.`);
+    }
+
+    const totalAmount = lines.reduce((acc, l) => acc + ((l.unitPrice?.gross?.amount ?? 0) * l.quantity), 0);
+
+    const payload: any = {
         register_id: registerId,
-        state: "parked", // 0.9 API uses state: parked/pending/voided/closed
+        state: "closed", // If we add payments, we can close it
         user_id: userId,
-        customer_id: null,
+        customer_id: customerId,
         register_sale_products: lines.map(line => ({
             product_id: line.variant?.externalReference || line.variant?.sku,
             quantity: line.quantity,
@@ -432,6 +490,13 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         })),
         note: `Saleor Order: ${order.number}`
     };
+
+    if (paymentTypeId) {
+        payload.register_sale_payments = [{
+            retailer_payment_type_id: paymentTypeId,
+            amount: totalAmount
+        }];
+    }
 
     try {
         logDebug(`      📡 Sending payload to Lightspeed 0.9 API: /api/register_sales`);
@@ -448,7 +513,7 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         const saleId = json.register_sale?.id || json.data?.id;
 
         if (res.ok && saleId) {
-            logDebug(`      ✅ Lightspeed Mirror Sale created: ${saleId} on Register: ${registerId}`);
+            logDebug(`      ✅ Lightspeed Mirror Sale created: ${saleId} on Register: ${registerId} (Customer: ${customerId || 'N/A'}, Status: Paid)`);
             return saleId.toString();
         } else {
             logDebug(`      ❌ Lightspeed Sale Creation Failed:`, JSON.stringify(json));
