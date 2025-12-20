@@ -32,7 +32,7 @@ export const lightspeedFulfillmentSync = task({
         })
             .from(integrations)
             .innerJoin(users, eq(integrations.userId, users.id))
-            .where(eq(integrations.storeUrl, payload.vendorStoreUrl))
+            .where(eq(integrations.storeUrl, payload.vendorStoreUrl.toLowerCase()))
             .limit(1);
 
         const integration = results[0];
