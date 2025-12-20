@@ -319,6 +319,12 @@ async function ensureLightspeedWebhook(integration: any) {
         const listRes = await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks`, {
             headers: { 'Authorization': `Bearer ${integration.accessToken}` }
         });
+        if (!listRes.ok) {
+            const listErr = await listRes.text();
+            logDebug(`      ❌ Failed to list Lightspeed webhooks: ${listRes.status} ${listErr}`);
+            return;
+        }
+
         const listJson: any = await listRes.json();
         const topic = "sale.update";
         const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.type === topic) : null;
@@ -328,7 +334,7 @@ async function ensureLightspeedWebhook(integration: any) {
                 return; // Already registered correctly
             }
             logDebug(`      🔄 Updating Lightspeed webhook for ${integration.storeUrl}...`);
-            await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks/${existing.id}`, {
+            const upRes = await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks/${existing.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -336,9 +342,13 @@ async function ensureLightspeedWebhook(integration: any) {
                 },
                 body: JSON.stringify({ active: true, url: webhookUrl })
             });
+            if (!upRes.ok) {
+                const upErr = await upRes.text();
+                logDebug(`      ❌ Failed to update Lightspeed webhook: ${upRes.status} ${upErr}`);
+            }
         } else {
             logDebug(`      🛠️ Registering new Lightspeed webhook for ${integration.storeUrl}...`);
-            await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks`, {
+            const regRes = await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -350,9 +360,15 @@ async function ensureLightspeedWebhook(integration: any) {
                     url: webhookUrl
                 })
             });
+            if (!regRes.ok) {
+                const regErr = await regRes.text();
+                logDebug(`      ❌ Failed to register Lightspeed webhook: ${regRes.status} ${regErr}`);
+            } else {
+                logDebug(`      ✅ Lightspeed webhook [${topic}] registered successfully.`);
+            }
         }
     } catch (e) {
-        logDebug(`      ⚠️ Failed to ensure Lightspeed webhook for ${integration.storeUrl}.`);
+        logDebug(`      ⚠️ Failed to ensure Lightspeed webhook for ${integration.storeUrl}: ${e instanceof Error ? e.message : String(e)}`);
     }
 }
 
