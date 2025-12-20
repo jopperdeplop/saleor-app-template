@@ -472,7 +472,12 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
         if (payRes.ok) {
             const payData = await payRes.json();
             // Prefer "Cash" or "Credit Card" or just the first one
-            const target = payData.data?.find((p: any) => p.name.toLowerCase().includes('cash') || p.name.toLowerCase().includes('card')) || payData.data?.[0];
+            const target = payData.data?.find((p: any) =>
+                p.name.toLowerCase().includes('saleor') ||
+                p.name.toLowerCase().includes('marketplace') ||
+                p.name.toLowerCase().includes('online') ||
+                p.name.toLowerCase().includes('card')
+            ) || payData.data?.[0];
             paymentTypeId = target?.id;
         }
     } catch (e) {
