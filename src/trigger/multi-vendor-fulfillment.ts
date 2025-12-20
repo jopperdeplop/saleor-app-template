@@ -68,6 +68,7 @@ export const automateMultiVendorFulfillment = task({
                     await ensureWooCommerceWebhook(integration);
                     mirrorOrderId = await createMirrorOrderOnWooCommerce(integration, order, lines);
                 } else if (provider === "lightspeed") {
+                    await ensureLightspeedWebhook(integration);
                     mirrorOrderId = await createMirrorOrderOnLightspeed(integration, order, lines);
                 }
 
@@ -302,6 +303,56 @@ async function ensureWooCommerceWebhook(integration: any) {
         }
     } catch (e) {
         logDebug(`      ⚠️ Failed to ensure WooCommerce webhook for ${normalizedStoreUrl}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+}
+
+async function ensureLightspeedWebhook(integration: any) {
+    const settings = (integration.settings || {}) as any;
+    const webhookSecret = settings.webhookSecret ? decrypt(settings.webhookSecret) : "";
+    if (!webhookSecret) return;
+
+    const appUrl = process.env.SHOPIFY_WEBHOOK_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://saleor-app-template-seven.vercel.app");
+    const webhookUrl = `${appUrl}/api/webhooks/lightspeed-fulfillment?secret=${webhookSecret}`;
+
+    try {
+        // 1. Check existing webhooks
+        const listRes = await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks`, {
+            headers: { 'Authorization': `Bearer ${integration.accessToken}` }
+        });
+        const listJson: any = await listRes.json();
+        const topic = "sale.update";
+        const existing = Array.isArray(listJson) ? listJson.find((w: any) => w.type === topic) : null;
+
+        if (existing) {
+            if (existing.url === webhookUrl) {
+                return; // Already registered correctly
+            }
+            logDebug(`      🔄 Updating Lightspeed webhook for ${integration.storeUrl}...`);
+            await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks/${existing.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${integration.accessToken}`
+                },
+                body: JSON.stringify({ active: true, url: webhookUrl })
+            });
+        } else {
+            logDebug(`      🛠️ Registering new Lightspeed webhook for ${integration.storeUrl}...`);
+            await fetch(`https://${integration.storeUrl}.retail.lightspeed.app/api/webhooks`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${integration.accessToken}`
+                },
+                body: JSON.stringify({
+                    active: true,
+                    type: topic,
+                    url: webhookUrl
+                })
+            });
+        }
+    } catch (e) {
+        logDebug(`      ⚠️ Failed to ensure Lightspeed webhook for ${integration.storeUrl}.`);
     }
 }
 
