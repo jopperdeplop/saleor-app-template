@@ -484,7 +484,6 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
     const payload: any = {
         register_id: registerId,
         state: "closed",
-        fulfillment_status: "OPEN", // Flags it for the fulfillment workflow
         user_id: userId,
         customer_id: customerId,
         register_sale_products: lines.map(line => ({
@@ -494,6 +493,16 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
             tax: 0,
             tax_id: "default"
         })),
+        register_sale_attributes: [
+            {
+                name: "fulfillment_status",
+                value: "OPEN"
+            },
+            {
+                name: "is_web_order",
+                value: "true"
+            }
+        ],
         note: `Saleor Order: ${order.number}`
     };
 
