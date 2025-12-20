@@ -489,6 +489,8 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
     const payload: any = {
         register_id: registerId,
         state: "closed",
+        fulfillment_status: "OPEN",
+        is_web_order: true,
         user_id: userId,
         customer_id: customerId,
         register_sale_products: lines.map(line => ({
@@ -498,16 +500,15 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
             tax: 0,
             tax_id: "default"
         })),
-        register_sale_attributes: [
-            {
-                name: "fulfillment_status",
-                value: "OPEN"
-            },
-            {
-                name: "is_web_order",
-                value: "true"
-            }
-        ],
+        shipping_address: order.shippingAddress ? {
+            first_name: order.shippingAddress.firstName,
+            last_name: order.shippingAddress.lastName,
+            address1: order.shippingAddress.streetAddress1,
+            address2: order.shippingAddress.streetAddress2,
+            city: order.shippingAddress.city,
+            postcode: order.shippingAddress.postalCode,
+            country_id: order.shippingAddress.country.code
+        } : undefined,
         note: `Saleor Order: ${order.number}`
     };
 
