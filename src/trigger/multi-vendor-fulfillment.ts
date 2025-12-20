@@ -496,7 +496,9 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
 
     const payload: any = {
         register_id: registerId,
-        state: "parked", // Ensures the sale stays open in the fulfillment/shipping workflow
+        state: "parked", // Ensures the sale stays open for fulfillment
+        fulfillment_status: "OPEN", // Top-level flag for 0.9 web sales
+        is_web_order: true, // Top-level flag for 0.9 web sales
         user_id: userId,
         customer_id: customerId,
         register_sale_products: lines.map(line => ({
@@ -505,19 +507,6 @@ async function createMirrorOrderOnLightspeed(integration: any, order: any, lines
             price: line.unitPrice?.gross?.amount ?? 0,
             tax: 0
         })),
-        shipping_address: order.shippingAddress ? {
-            first_name: order.shippingAddress.firstName,
-            last_name: order.shippingAddress.lastName,
-            address1: order.shippingAddress.streetAddress1,
-            address2: order.shippingAddress.streetAddress2,
-            city: order.shippingAddress.city,
-            postcode: order.shippingAddress.postalCode,
-            country_id: order.shippingAddress.country.code
-        } : undefined,
-        register_sale_attributes: [
-            { name: "fulfillment_status", value: "OPEN" },
-            { name: "is_web_order", value: "true" }
-        ],
         note: `Saleor Order: ${order.number}`
     };
 
