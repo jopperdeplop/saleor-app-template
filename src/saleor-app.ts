@@ -10,7 +10,7 @@ import { DrizzleAPL } from "./lib/db-apl";
  */
 export let apl: APL;
 
-if (process.env.DATABASE_URL) {
+if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
   console.log("✅ DrizzleAPL (Database) selected.");
   apl = new DrizzleAPL();
 } else if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
