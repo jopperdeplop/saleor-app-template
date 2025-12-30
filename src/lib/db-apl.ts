@@ -5,14 +5,19 @@ import { eq } from "drizzle-orm";
 
 export class DrizzleAPL implements APL {
   async get(saleorApiUrl: string): Promise<AuthData | undefined> {
+    console.log(`🔍 [APL Query] Searching for: ${saleorApiUrl}`);
     const [result] = await db
       .select()
       .from(saleorAuth)
       .where(eq(saleorAuth.saleorApiUrl, saleorApiUrl))
       .limit(1);
 
-    if (!result) return undefined;
+    if (!result) {
+      console.warn(`❌ [APL Query] TOKEN NOT FOUND in database for: ${saleorApiUrl}`);
+      return undefined;
+    }
 
+    console.log(`✅ [APL Query] Token found for: ${saleorApiUrl}`);
     return {
       saleorApiUrl: result.saleorApiUrl,
       token: result.token,

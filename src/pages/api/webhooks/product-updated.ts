@@ -17,6 +17,7 @@ export const productUpdatedWebhook = new SaleorAsyncWebhook<ProductUpdatedPayloa
 });
 
 export default productUpdatedWebhook.createHandler(async (req, res, ctx) => {
+  console.log("📥 [Webhook] Product Updated call received");
   const { payload } = ctx;
   const product = payload.product;
 
