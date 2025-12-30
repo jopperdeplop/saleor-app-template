@@ -1,0 +1,29 @@
+subscription ProductVariantUpdated {
+  event {
+    ...ProductVariantUpdatedPayload
+  }
+}
+
+fragment ProductVariantUpdatedPayload on ProductVariantUpdated {
+  productVariant {
+    id
+    name
+    sku
+    product {
+      id
+      name
+      slug
+    }
+    channelListings {
+      id
+      channel {
+        id
+        slug
+      }
+      price {
+        amount
+        currency
+      }
+    }
+  }
+}

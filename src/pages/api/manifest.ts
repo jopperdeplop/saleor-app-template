@@ -6,6 +6,7 @@ import packageJson from "@/package.json";
 import { orderCreatedWebhook } from "./webhooks/order-created";
 import { orderFilterShippingMethodsWebhook } from "./webhooks/order-filter-shipping-methods";
 import { shippingMethodsWebhook } from "./webhooks/shipping-methods";
+import { productVariantUpdatedWebhook } from "./webhooks/product-variant-updated";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -65,12 +66,11 @@ export default createManifestHandler({
        */
       permissions: [
         /**
-         * Add permission to allow "ORDER_CREATED" / "ORDER_FILTER_SHIPPING_METHODS" webhooks registration.
-         *
-         * This can be removed
+         * Permissions required for webhooks
          */
         "MANAGE_ORDERS",
         "MANAGE_SHIPPING",
+        "MANAGE_PRODUCTS", // Added for product sync
       ],
       id: "saleor.app",
       version: packageJson.version,
@@ -86,6 +86,7 @@ export default createManifestHandler({
         orderCreatedWebhook.getWebhookManifest(apiBaseURL),
         orderFilterShippingMethodsWebhook.getWebhookManifest(apiBaseURL),
         shippingMethodsWebhook.getWebhookManifest(apiBaseURL),
+        productVariantUpdatedWebhook.getWebhookManifest(apiBaseURL),
       ],
       /**
        * Optionally, extend Dashboard with custom UIs
