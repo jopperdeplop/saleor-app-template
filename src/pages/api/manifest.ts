@@ -7,6 +7,7 @@ import { orderCreatedWebhook } from "./webhooks/order-created";
 import { orderFilterShippingMethodsWebhook } from "./webhooks/order-filter-shipping-methods";
 import { shippingMethodsWebhook } from "./webhooks/shipping-methods";
 import { productVariantUpdatedWebhook } from "./webhooks/product-variant-updated";
+import { productVariantDeletedWebhook } from "./webhooks/product-variant-deleted";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -87,6 +88,7 @@ export default createManifestHandler({
         orderFilterShippingMethodsWebhook.getWebhookManifest(apiBaseURL),
         shippingMethodsWebhook.getWebhookManifest(apiBaseURL),
         productVariantUpdatedWebhook.getWebhookManifest(apiBaseURL),
+        productVariantDeletedWebhook.getWebhookManifest(apiBaseURL),
       ],
       /**
        * Optionally, extend Dashboard with custom UIs

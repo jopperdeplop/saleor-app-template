@@ -1,0 +1,12 @@
+subscription ProductVariantDeleted {
+  event {
+    ...ProductVariantDeletedPayload
+  }
+}
+
+fragment ProductVariantDeletedPayload on ProductVariantDeleted {
+  productVariant {
+    id
+    sku
+  }
+}
