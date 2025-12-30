@@ -54,11 +54,11 @@ export class DrizzleAPL implements APL {
     }));
   }
 
-  async isReady(): Promise<boolean> {
-    return true;
+  async isReady(): Promise<any> {
+    return { ready: true as const };
   }
 
-  async isConfigured(): Promise<boolean> {
-    return true;
+  async isConfigured(): Promise<any> {
+    return { configured: true as const };
   }
 }

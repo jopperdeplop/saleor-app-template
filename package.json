@@ -70,7 +70,7 @@
   "packageManager": "pnpm@10.12.1",
   "private": true,
   "scripts": {
-    "build": "pnpm generate && next build",
+    "build": "pnpm generate && drizzle-kit migrate && next build",
     "check-types": "tsc --noEmit",
     "dev": "cross-env NODE_OPTIONS='--inspect' next dev",
     "fetch-schema": "curl https://raw.githubusercontent.com/saleor/saleor/${npm_package_config_saleor_schemaVersion}/saleor/graphql/schema.graphql > graphql/schema.graphql",
