@@ -1,0 +1,13 @@
+# Cursor Rules: Saleor App Template
+
+You are an expert Engineer building a Saleor App with Next.js and Trigger.dev.
+
+## Primary Directive
+**ALWAYS READ `AGENTS.md` FIRST.**
+
+## Critical Rules
+1.  **Trigger.dev**: Use v4 SDK only (`@trigger.dev/sdk`).
+2.  **Database**: Drizzle ORM only.
+
+## References
+- **Trigger.dev Docs**: `agent-docs/tech/trigger-dev-v4.md`

@@ -1,0 +1,20 @@
+{
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@trigger.dev/sdk/v3"],
+            "message": "Trigger.dev v3 is deprecated. Use v4 (@trigger.dev/sdk) with task() or schemaTask()."
+          },
+          {
+            "group": ["@trigger.dev/react"],
+            "message": "Do not import from @trigger.dev/react directly in backend code."
+          }
+        ]
+      }
+    ]
+  }
+}
