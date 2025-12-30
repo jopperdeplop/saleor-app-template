@@ -34,3 +34,10 @@ export const integrations = pgTable('integrations', {
     settings: jsonb('settings'), // { sync_inventory: boolean, shipping_provider: string }
     createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const saleorAuth = pgTable('saleor_auth', {
+    saleorApiUrl: text('saleor_api_url').primaryKey().notNull(),
+    token: text('token').notNull(),
+    appId: text('app_id').notNull(),
+    jwks: text('jwks'),
+});

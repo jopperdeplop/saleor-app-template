@@ -1,34 +1,26 @@
 import { APL } from "@saleor/app-sdk/APL";
 import { SaleorApp } from "@saleor/app-sdk/saleor-app";
 import { FileAPL } from "@saleor/app-sdk/APL/file";
-
-/**
- * By default auth data are stored in the `.auth-data.json` (FileAPL).
- * For multi-tenant applications and deployments please use UpstashAPL.
- *
- * To read more about storing auth data, read the
- * [APL documentation](https://github.com/saleor/saleor-app-sdk/blob/main/docs/apl.md)
- */
 import { UpstashAPL } from "@saleor/app-sdk/APL/upstash";
+import { DrizzleAPL } from "./lib/db-apl";
 
 /**
- * By default auth data are stored in the `.auth-data.json` (FileAPL).
- * For multi-tenant applications and deployments please use UpstashAPL.
- *
- * To read more about storing auth data, read the
- * [APL documentation](https://github.com/saleor/saleor-app-sdk/blob/main/docs/apl.md)
+ * Persistently store Saleor auth data.
+ * Priority: 1. Upstash 2. Database (Drizzle) 3. Local File (Dev only)
  */
 export let apl: APL;
 
 if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-  console.log("✅ UpstashAPL selected. KV_REST_API_URL is found.");
+  console.log("✅ UpstashAPL selected.");
   apl = new UpstashAPL({
     restURL: process.env.KV_REST_API_URL,
     restToken: process.env.KV_REST_API_TOKEN,
   });
+} else if (process.env.DATABASE_URL) {
+  console.log("✅ DrizzleAPL selected (Database).");
+  apl = new DrizzleAPL();
 } else {
-  console.warn("⚠️ FileAPL selected. KV_REST_API_URL was NOT found.");
-  console.log("Env check: URL exists?", !!process.env.KV_REST_API_URL, "Token exists?", !!process.env.KV_REST_API_TOKEN);
+  console.warn("⚠️ FileAPL selected (Non-persistent).");
   apl = new FileAPL();
 }
 
