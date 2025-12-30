@@ -38,11 +38,11 @@ export default productVariantUpdatedWebhook.createHandler(async (req, res, ctx) 
 
     // Transform Saleor data to Payload schema
     const data = {
-      variant_id: variant.id,
-      variant_name: variant.name || "",
-      product_id: variant.product?.id || "",
-      product_name: variant.product?.name || "",
-      product_slug: variant.product?.slug || "",
+      variantId: variant.id,
+      variantName: variant.name || "",
+      productId: variant.product?.id || "",
+      productName: variant.product?.name || "",
+      productSlug: variant.product?.slug || "",
       sku: variant.sku || "",
       channels: variant.channelListings || [],
     };
@@ -53,8 +53,9 @@ export default productVariantUpdatedWebhook.createHandler(async (req, res, ctx) 
     // However, standard Payload REST create is POST. Update is PATCH ID.
     // We need to know the Payload ID to update.
     
-    // Strategy: Search for existing variant by variant_id
-    const searchUrl = `${payloadApiUrl}/${payloadCollection}?where[variant_id][equals]=${variant.id}&depth=0`;
+    // Strategy: Search for existing variant by variantId
+    const searchUrl = `${payloadApiUrl}/${payloadCollection}?where[variantId][equals]=${variant.id}&depth=0`;
+
     
     const headers: HeadersInit = {
       "Content-Type": "application/json",

@@ -36,8 +36,9 @@ export default productVariantDeletedWebhook.createHandler(async (req, res, ctx) 
       return res.status(500).json({ error: "Configuration error" });
     }
 
-    // Strategy: Search for existing variant by variant_id to get Payload's internal ID
-    const searchUrl = `${payloadApiUrl}/${payloadCollection}?where[variant_id][equals]=${variant.id}&depth=0`;
+    // Strategy: Search for existing variant by variantId to get Payload's internal ID
+    const searchUrl = `${payloadApiUrl}/${payloadCollection}?where[variantId][equals]=${variant.id}&depth=0`;
+
     
     const headers: HeadersInit = {
       "Content-Type": "application/json",
