@@ -1,0 +1,31 @@
+subscription CategoryEvents {
+  event {
+    ... on CategoryCreated {
+      category {
+        id
+        name
+        slug
+        description
+        parent {
+          id
+        }
+      }
+    }
+    ... on CategoryUpdated {
+      category {
+        id
+        name
+        slug
+        description
+        parent {
+          id
+        }
+      }
+    }
+    ... on CategoryDeleted {
+      category {
+        id
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+subscription PageEvents {
+  event {
+    ... on PageCreated {
+      page {
+        id
+        title
+        slug
+        content
+      }
+    }
+    ... on PageUpdated {
+      page {
+        id
+        title
+        slug
+        content
+      }
+    }
+    ... on PageDeleted {
+      page {
+        id
+      }
+    }
+  }
+}

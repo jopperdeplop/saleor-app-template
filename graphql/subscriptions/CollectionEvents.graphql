@@ -1,0 +1,25 @@
+subscription CollectionEvents {
+  event {
+    ... on CollectionCreated {
+      collection {
+        id
+        name
+        slug
+        description
+      }
+    }
+    ... on CollectionUpdated {
+      collection {
+        id
+        name
+        slug
+        description
+      }
+    }
+    ... on CollectionDeleted {
+      collection {
+        id
+      }
+    }
+  }
+}

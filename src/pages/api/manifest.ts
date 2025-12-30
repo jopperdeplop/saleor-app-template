@@ -9,6 +9,9 @@ import { shippingMethodsWebhook } from "./webhooks/shipping-methods";
 import { productVariantUpdatedWebhook } from "./webhooks/product-variant-updated";
 import { productVariantDeletedWebhook } from "./webhooks/product-variant-deleted";
 import { productUpdatedWebhook } from "./webhooks/product-updated";
+import { categorySyncWebhook } from "./webhooks/category-sync";
+import { collectionSyncWebhook } from "./webhooks/collection-sync";
+import { pageSyncWebhook } from "./webhooks/page-sync";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -72,7 +75,8 @@ export default createManifestHandler({
          */
         "MANAGE_ORDERS",
         "MANAGE_SHIPPING",
-        "MANAGE_PRODUCTS", // Added for product sync
+        "MANAGE_PRODUCTS",
+        "MANAGE_PAGES",
       ],
       id: "saleor.app",
       version: packageJson.version,
@@ -91,6 +95,9 @@ export default createManifestHandler({
         productVariantUpdatedWebhook.getWebhookManifest(apiBaseURL),
         productVariantDeletedWebhook.getWebhookManifest(apiBaseURL),
         productUpdatedWebhook.getWebhookManifest(apiBaseURL),
+        categorySyncWebhook.getWebhookManifest(apiBaseURL),
+        collectionSyncWebhook.getWebhookManifest(apiBaseURL),
+        pageSyncWebhook.getWebhookManifest(apiBaseURL),
       ],
       /**
        * Optionally, extend Dashboard with custom UIs
