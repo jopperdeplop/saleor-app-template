@@ -11,7 +11,7 @@ export type CategoryPayload = CategoryEventsSubscription["event"];
 export const categorySyncWebhook = new SaleorAsyncWebhook<CategoryPayload>({
   name: "Category Sync",
   webhookPath: "api/webhooks/category-sync",
-  event: "ANY_EVENTS", // We'll handle multiple sub-events
+  event: "ANY_EVENTS" as any, // We'll handle multiple sub-events
   apl: saleorApp.apl,
   query: CategoryEventsDocument,
 });
