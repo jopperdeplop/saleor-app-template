@@ -1,4 +1,4 @@
-CREATE TABLE "integrations" (
+CREATE TABLE IF NOT EXISTS "integrations" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
 	"provider" text NOT NULL,
@@ -9,14 +9,14 @@ CREATE TABLE "integrations" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "saleor_auth" (
+CREATE TABLE IF NOT EXISTS "saleor_auth" (
 	"saleor_api_url" text PRIMARY KEY NOT NULL,
 	"token" text NOT NULL,
 	"app_id" text NOT NULL,
 	"jwks" text
 );
 --> statement-breakpoint
-CREATE TABLE "users" (
+CREATE TABLE IF NOT EXISTS "users" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"email" text NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE "vendor_applications" (
+CREATE TABLE IF NOT EXISTS "vendor_applications" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"company_name" text NOT NULL,
 	"email" text NOT NULL,
