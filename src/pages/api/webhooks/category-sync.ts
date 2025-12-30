@@ -17,7 +17,7 @@ export const categorySyncWebhook = new SaleorAsyncWebhook<CategoryPayload>({
 });
 
 export default categorySyncWebhook.createHandler(async (req, res, ctx) => {
-  const { payload } = ctx;
+  const payload = ctx.payload as any;
   const event = payload;
 
   const payloadApiUrl = process.env.NEXT_PUBLIC_PAYLOAD_API_URL;
