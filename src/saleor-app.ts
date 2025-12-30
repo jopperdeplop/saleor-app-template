@@ -10,15 +10,15 @@ import { DrizzleAPL } from "./lib/db-apl";
  */
 export let apl: APL;
 
-if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+if (process.env.DATABASE_URL) {
+  console.log("✅ DrizzleAPL (Database) selected.");
+  apl = new DrizzleAPL();
+} else if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
   console.log("✅ UpstashAPL selected.");
   apl = new UpstashAPL({
     restURL: process.env.KV_REST_API_URL,
     restToken: process.env.KV_REST_API_TOKEN,
   });
-} else if (process.env.DATABASE_URL) {
-  console.log("✅ DrizzleAPL selected (Database).");
-  apl = new DrizzleAPL();
 } else {
   console.warn("⚠️ FileAPL selected (Non-persistent).");
   apl = new FileAPL();

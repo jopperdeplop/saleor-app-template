@@ -17,6 +17,7 @@ const handler: NextApiHandler = async (req, res) => {
       saleorApiUrl,
     });
   } catch (e) {
+    console.error("❌ Widget Auth Failure:", e);
     return res.status(401).send("Not authorized");
   }
 
