@@ -49,6 +49,12 @@ export default categoryUpdatedWebhook.createHandler(async (req, res, ctx) => {
       headers,
       body: JSON.stringify(data),
     });
+  } else {
+    await fetch(`${payloadApiUrl}/${collection}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+    });
   }
 
   return res.status(200).json({ success: true });
