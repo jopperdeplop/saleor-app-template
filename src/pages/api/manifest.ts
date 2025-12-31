@@ -9,9 +9,15 @@ import { shippingMethodsWebhook } from "./webhooks/shipping-methods";
 import { productVariantUpdatedWebhook } from "./webhooks/product-variant-updated";
 import { productVariantDeletedWebhook } from "./webhooks/product-variant-deleted";
 import { productUpdatedWebhook } from "./webhooks/product-updated";
-import { categorySyncWebhook } from "./webhooks/category-sync";
-import { collectionSyncWebhook } from "./webhooks/collection-sync";
-import { pageSyncWebhook } from "./webhooks/page-sync";
+import { categoryCreatedWebhook } from "./webhooks/category-created";
+import { categoryUpdatedWebhook } from "./webhooks/category-updated";
+import { categoryDeletedWebhook } from "./webhooks/category-deleted";
+import { collectionCreatedWebhook } from "./webhooks/collection-created";
+import { collectionUpdatedWebhook } from "./webhooks/collection-updated";
+import { collectionDeletedWebhook } from "./webhooks/collection-deleted";
+import { pageCreatedWebhook } from "./webhooks/page-created";
+import { pageUpdatedWebhook } from "./webhooks/page-updated";
+import { pageDeletedWebhook } from "./webhooks/page-deleted";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -95,9 +101,15 @@ export default createManifestHandler({
         productVariantUpdatedWebhook.getWebhookManifest(apiBaseURL),
         productVariantDeletedWebhook.getWebhookManifest(apiBaseURL),
         productUpdatedWebhook.getWebhookManifest(apiBaseURL),
-        categorySyncWebhook.getWebhookManifest(apiBaseURL),
-        collectionSyncWebhook.getWebhookManifest(apiBaseURL),
-        pageSyncWebhook.getWebhookManifest(apiBaseURL),
+        categoryCreatedWebhook.getWebhookManifest(apiBaseURL),
+        categoryUpdatedWebhook.getWebhookManifest(apiBaseURL),
+        categoryDeletedWebhook.getWebhookManifest(apiBaseURL),
+        collectionCreatedWebhook.getWebhookManifest(apiBaseURL),
+        collectionUpdatedWebhook.getWebhookManifest(apiBaseURL),
+        collectionDeletedWebhook.getWebhookManifest(apiBaseURL),
+        pageCreatedWebhook.getWebhookManifest(apiBaseURL),
+        pageUpdatedWebhook.getWebhookManifest(apiBaseURL),
+        pageDeletedWebhook.getWebhookManifest(apiBaseURL),
       ],
       /**
        * Optionally, extend Dashboard with custom UIs
