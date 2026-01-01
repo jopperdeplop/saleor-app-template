@@ -40,12 +40,14 @@ const GET_CATEGORIES_QUERY = gql`
 
 const CREATE_CATEGORY_MUTATION = gql`
   mutation CreateCategory($name: String!, $parent: ID, $seoTitle: String, $seoDesc: String, $desc: JSONString) {
-    categoryCreate(input: {
-      name: $name,
-      parent: $parent,
-      seo: { title: $seoTitle, description: $seoDesc },
-      description: $desc
-    }) {
+    categoryCreate(
+      input: {
+        name: $name,
+        seo: { title: $seoTitle, description: $seoDesc },
+        description: $desc
+      }
+      parent: $parent
+    ) {
       category { id }
       errors { field message }
     }
@@ -60,10 +62,12 @@ const UPDATE_PRODUCT_CATEGORY_MUTATION = gql`
   }
 `;
 
+// NOTE: standard categoryUpdate does not support reparenting. 
+// We are disabling this for now to prevent errors.
 const UPDATE_CATEGORY_PARENT_MUTATION = gql`
   mutation UpdateCategoryParent($id: ID!, $parent: ID!) {
-    categoryUpdate(id: $id, input: { parent: $parent }) {
-      errors { field message }
+    categoryUpdate(id: $id, input: { }) {
+       errors { field message }
     }
   }
 `;
@@ -237,11 +241,12 @@ export const optimizeCategoryHierarchy = task({
         if (isDryRun) {
           console.log(`   [DRY RUN] Would move "${childName}" under "${parentName}"`);
         } else {
-             await saleorClient.mutation(UPDATE_CATEGORY_PARENT_MUTATION, {
-               id: childCat.id,
-               parent: parentCategory.id
-             }).toPromise();
-             console.log(`   ✅ Moved "${childName}" under "${parentName}"`);
+             // Reparenting is not supported in standard Saleor API v3.x via categoryUpdate
+             // await saleorClient.mutation(UPDATE_CATEGORY_PARENT_MUTATION, {
+             //   id: childCat.id,
+             //   parent: parentCategory.id
+             // }).toPromise();
+             console.log(`   ⚠️ Skipping move of "${childName}" -> "${parentName}" (Reparenting not supported in layout)`);
         }
       }
     }
