@@ -52,9 +52,10 @@ export async function suggestCategoriesForBatch(
     ${JSON.stringify(products.map(p => ({ id: p.id, name: p.name, desc: p.description.slice(0, 100) })))}
 
     INSTRUCTIONS:
-    1. Organize products into strict categories.
-    2. Ignore generic categories like "Uncategorized".
-    3. Return ONLY valid JSON: { "Category Name": ["product_id_1", "product_id_2"] }
+    1. Organize products into strict, specific categories (e.g., "Snowboards", "Boots", "Bindings").
+    2. IGNORE generic categories like "Uncategorized" or "Default Category" found in the context.
+    3. Even if "Default Category" exists, DO NOT map products to it. Create a NEW specific category instead.
+    4. Return ONLY valid JSON: { "Category Name": ["product_id_1", "product_id_2"] }
   `;
 
   try {
