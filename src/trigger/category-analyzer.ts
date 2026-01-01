@@ -184,10 +184,17 @@ export const analyzeProductClusters = task({
 
              const newCat = createRes.data?.categoryCreate?.category;
              if (newCat?.id) {
-               console.log(`      ✅ Created category "${partName}" (${newCat.id}) under ${currentParentId || "ROOT"}`);
+               const actualParentId = currentParentId;
+               console.log(`      ✅ Created category "${partName}" (${newCat.id}) under ${actualParentId || "ROOT"}`);
+               
                currentParentId = newCat.id;
-               // Add to local cache so next iteration finds it
-               allCategories.push({ id: newCat.id, name: partName, parent: currentParentId ? { id: currentParentId } : null });
+               
+               // Add to local cache with CORRECT parent structure
+               allCategories.push({ 
+                 id: newCat.id, 
+                 name: partName, 
+                 parent: actualParentId ? { id: actualParentId } : null 
+               });
              }
            }
          }
