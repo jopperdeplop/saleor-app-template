@@ -7,7 +7,7 @@ if (!API_KEY && process.env.NODE_ENV !== "test") {
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
 
 export interface CategorySuggestion {
   categoryName: string;
