@@ -7,8 +7,8 @@ if (!API_KEY && process.env.NODE_ENV !== "test") {
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY || "");
-// using 'gemini-pro' as it is the most stable GA model currently.
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+// using model from shopify-product-lifecycle.ts as requested
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-09-2025" });
 
 export interface CategorySuggestion {
   categoryName: string;
