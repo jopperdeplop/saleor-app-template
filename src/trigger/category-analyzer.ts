@@ -151,7 +151,9 @@ export const analyzeProductClusters = task({
              continue;
            }
 
-           if (targetCategoryId) {
+           const newCategory = createRes.data?.categoryCreate?.category;
+           if (newCategory?.id) {
+             targetCategoryId = newCategory.id;
              existingCategoryMap.set(categoryName.toLowerCase(), targetCategoryId);
              console.log(`      ✅ Created category "${categoryName}" (${targetCategoryId})`);
            }
