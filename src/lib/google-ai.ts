@@ -7,7 +7,8 @@ if (!API_KEY && process.env.NODE_ENV !== "test") {
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+// using 'gemini-pro' as it is the most stable GA model currently.
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
 export interface CategorySuggestion {
   categoryName: string;
