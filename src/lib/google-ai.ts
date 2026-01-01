@@ -52,10 +52,11 @@ export async function suggestCategoriesForBatch(
     ${JSON.stringify(products.map(p => ({ id: p.id, name: p.name, desc: p.description.slice(0, 100) })))}
 
     INSTRUCTIONS:
-    1. Organize products into strict, specific categories (e.g., "Snowboards", "Boots", "Bindings").
-    2. IGNORE generic categories like "Uncategorized" or "Default Category" found in the context.
-    3. Even if "Default Category" exists, DO NOT map products to it. Create a NEW specific category instead.
-    4. Return ONLY valid JSON: { "Category Name": ["product_id_1", "product_id_2"] }
+    1. Organize products into specific hierarchical paths (e.g., "Winter Sports > Snowboarding > Gear", "Winter Sports > Maintenance > Ski Wax").
+    2. BE SPECIFIC: Avoid generic categories like "Accessories" or "Equipment" if a more specific one (like "Ski Wax" or "Bindings") applies.
+    3. CHECK CONTEXT: If a specific category like "Ski Wax" already exists in the provided list, USE IT (or nested under a parent).
+    4. CONSISTENCY: Ensure similar products (e.g. all waxes) go to the EXACT same path.
+    5. Return ONLY valid JSON: { "Category Path": ["product_id_1"] }
   `;
 
   try {
