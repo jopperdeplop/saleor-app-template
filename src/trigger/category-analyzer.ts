@@ -89,15 +89,28 @@ export const analyzeProductClusters = task({
     const isDryRun = payload.dryRun === true;
     console.log(`🚀 Starting Product Cluster Analysis [LIVE: ${!isDryRun}]`);
 
-    // 1. Fetch Context (Existing Categories)
-    // We need to know what categories already exist to avoid duplicates (e.g. creating "Snowboards" if "Snowboard" exists)
-    const catRes = await saleorClient.query(GET_CATEGORIES_QUERY, {}).toPromise();
-    if (catRes.error) throw new Error(catRes.error.message);
+    // 1. Fetch ALL Existing Categories (Pagination)
+    let allCategories: any[] = [];
+    let hasNextPage = true;
+    let endCursor = null;
+
+    console.log("   🔄 Fetching full category tree...");
+    while (hasNextPage) {
+      const catRes: any = await saleorClient.query(GET_CATEGORIES_QUERY, { first: 100, after: endCursor }).toPromise();
+      if (catRes.error) throw new Error(catRes.error.message);
+      
+      const edges = catRes.data?.categories?.edges || [];
+      allCategories.push(...edges.map((e: any) => e.node));
+      
+      hasNextPage = catRes.data?.categories?.pageInfo?.hasNextPage;
+      endCursor = catRes.data?.categories?.pageInfo?.endCursor;
+    }
+    console.log(`   ✅ Loaded ${allCategories.length} categories.`);
     
     // Map of Lowercase Name -> ID
-    const existingCategories = catRes.data.categories.edges.map((e: any) => e.node.name);
+    const existingCategories = allCategories.map((c: any) => c.name);
     const existingCategoryMap = new Map<string, string>(); 
-    catRes.data.categories.edges.forEach((e: any) => existingCategoryMap.set(e.node.name.toLowerCase(), e.node.id));
+    allCategories.forEach((c: any) => existingCategoryMap.set(c.name.toLowerCase(), c.id));
 
     // 2. Fetch Products
     // For this version we process the first batch found. 
@@ -123,9 +136,8 @@ export const analyzeProductClusters = task({
     const clusters = await suggestCategoriesForBatch(simplifiedProducts, existingCategories);
 
     // 4. Execute Decisions
-    // 4. Execute Decisions
-    // Maintain a local cache of categories to avoid refetching/duplicating in loop
-    let allCategories = catRes.data.categories.edges.map((e: any) => e.node);
+
+
 
     for (const [pathStr, productIds] of Object.entries(clusters)) {
       console.log(`   📂 Cluster found: "${pathStr}" with ${productIds.length} items.`);
