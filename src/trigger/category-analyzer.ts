@@ -123,57 +123,83 @@ export const analyzeProductClusters = task({
     const clusters = await suggestCategoriesForBatch(simplifiedProducts, existingCategories);
 
     // 4. Execute Decisions
-    for (const [categoryName, productIds] of Object.entries(clusters)) {
-      console.log(`   📂 Cluster found: "${categoryName}" with ${productIds.length} items.`);
+    // 4. Execute Decisions
+    // Maintain a local cache of categories to avoid refetching/duplicating in loop
+    let allCategories = catRes.data.categories.edges.map((e: any) => e.node);
 
-      let targetCategoryId = existingCategoryMap.get(categoryName.toLowerCase());
+    for (const [pathStr, productIds] of Object.entries(clusters)) {
+      console.log(`   📂 Cluster found: "${pathStr}" with ${productIds.length} items.`);
+      
+      const parts = pathStr.split(" > ");
+      let currentParentId: string | null = null;
+      let finalCategoryId: string | null = null;
 
-      // Create Category if Missing
-      if (!targetCategoryId) {
-        if (isDryRun) {
-           console.log(`      [DRY RUN] Would CREATE category "${categoryName}"`);
-           targetCategoryId = "dry-run-id";
-        } else {
-           // Generate initial SEO for new category
-           // We use the AI to write a description based on the category name
-           const meta = await generateCategorySEO(categoryName, []); 
-           
-           const createRes = await saleorClient.mutation(CREATE_CATEGORY_MUTATION, {
-             name: categoryName,
-             seoTitle: meta.seoTitle,
-             seoDesc: meta.seoDescription,
-             // Create a simple EditorJS block for the description
-             desc: JSON.stringify({ time: Date.now(), blocks: [{ type: "paragraph", data: { text: meta.description } }] }) 
-           }).toPromise();
+      // Traverse/Create the path
+      for (const partName of parts) {
+         // Find category matching name AND parent
+         // Root category: parent is null. Subcategory: parent.id === currentParentId
+         let foundCat = allCategories.find((c: any) => 
+           c.name.toLowerCase() === partName.toLowerCase() && 
+           (currentParentId ? c.parent?.id === currentParentId : !c.parent)
+         );
 
-           if (createRes.error || createRes.data?.categoryCreate?.errors?.length > 0) {
-             console.error(`      ❌ Failed to create category ${categoryName}`, createRes.error || createRes.data?.categoryCreate?.errors);
-             continue;
+         if (foundCat) {
+           currentParentId = foundCat.id;
+         } else {
+           // Create it
+           if (isDryRun) {
+             console.log(`      [DRY RUN] Would CREATE category "${partName}" under parent ${currentParentId || "ROOT"}`);
+             currentParentId = "dry-run-id-" + partName;
+           } else {
+             // Generate SEO only if it's a new leaf or meaningful node?
+             // For simplicity, we generate basic SEO for every new node.
+             const meta = await generateCategorySEO(partName, []); 
+             
+             const createRes = await saleorClient.mutation(CREATE_CATEGORY_MUTATION, {
+               name: partName,
+               parent: currentParentId, // Link to previous node
+               seoTitle: meta.seoTitle,
+               seoDesc: meta.seoDescription,
+               desc: JSON.stringify({ time: Date.now(), blocks: [{ type: "paragraph", data: { text: meta.description } }] }) 
+             }).toPromise();
+
+             if (createRes.error || createRes.data?.categoryCreate?.errors?.length > 0) {
+               console.error(`      ❌ Failed to create category "${partName}"`, createRes.error || createRes.data?.categoryCreate?.errors);
+               // If we fail to create a parent, we can't create children or assign products correctly.
+               currentParentId = null; 
+               break; 
+             }
+
+             const newCat = createRes.data?.categoryCreate?.category;
+             if (newCat?.id) {
+               console.log(`      ✅ Created category "${partName}" (${newCat.id}) under ${currentParentId || "ROOT"}`);
+               currentParentId = newCat.id;
+               // Add to local cache so next iteration finds it
+               allCategories.push({ id: newCat.id, name: partName, parent: currentParentId ? { id: currentParentId } : null });
+             }
            }
-
-           const newCategory = createRes.data?.categoryCreate?.category;
-           if (newCategory?.id) {
-             targetCategoryId = newCategory.id;
-             existingCategoryMap.set(categoryName.toLowerCase(), targetCategoryId);
-             console.log(`      ✅ Created category "${categoryName}" (${targetCategoryId})`);
-           }
-        }
+         }
       }
 
-      // Move Products
-      for (const prodId of productIds) {
-        const prod = products.find((p: any) => p.id === prodId);
-        // Skip if already in that category to avoid redundant updates
-        if (prod?.category?.name?.toLowerCase() === categoryName.toLowerCase()) continue;
+      finalCategoryId = currentParentId;
 
-        if (isDryRun) {
-          console.log(`      [DRY RUN] Would move product "${prod?.name}" -> "${categoryName}"`);
-        } else {
-          if (targetCategoryId) {
-            await saleorClient.mutation(UPDATE_PRODUCT_CATEGORY_MUTATION, {
-              id: prodId,
-              category: targetCategoryId
-            }).toPromise();
+      // Move Products to the Final Leaf Category
+      if (finalCategoryId || isDryRun) {
+        for (const prodId of productIds) {
+          const prod = products.find((p: any) => p.id === prodId);
+          // Skip if already in that category?
+          // We can check local cache if we had full product info, but basic check:
+          if (prod?.category?.name?.toLowerCase() === parts[parts.length - 1].toLowerCase()) continue;
+
+          if (isDryRun) {
+            console.log(`      [DRY RUN] Would move product "${prod?.name}" -> "${pathStr}"`);
+          } else {
+             if (finalCategoryId && !finalCategoryId.startsWith("dry-run")) {
+                await saleorClient.mutation(UPDATE_PRODUCT_CATEGORY_MUTATION, {
+                  id: prodId,
+                  category: finalCategoryId
+                }).toPromise();
+             }
           }
         }
       }
