@@ -86,9 +86,10 @@ export async function optimizeHierarchy(
     ${JSON.stringify(categories)}
 
     INSTRUCTIONS:
-    1. Group related items (e.g., "Snowboards", "Bindings" -> "Winter Sports").
-    2. Create NEW Parents if needed (e.g., "Winter Sports").
+    1. Group related items into a strong directory structure (e.g., "Snowboards", "Ski Wax" -> "Winter Sports").
+    2. Create NEW common Parent Categories if logic dictates (e.g., create "Winter Sports" for isolated winter items).
     3. Return JSON: { "Parent Name": ["Child Name", "Child Name"] }
+    4. Focus on aggregating meaningful clusters (e.g. don't leave "Ski Wax" as a root category if "Winter Sports" can exist).
   `;
 
   try {
