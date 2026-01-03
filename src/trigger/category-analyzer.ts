@@ -167,7 +167,7 @@ export const analyzeProductClusters = task({
              // For simplicity, we generate basic SEO for every new node.
              const meta = await generateCategorySEO(partName, []); 
              
-             const createRes = await saleorClient.mutation(CREATE_CATEGORY_MUTATION, {
+             const createRes: any = await saleorClient.mutation(CREATE_CATEGORY_MUTATION, {
                name: partName,
                parent: currentParentId, // Link to previous node
                seoTitle: meta.seoTitle,
