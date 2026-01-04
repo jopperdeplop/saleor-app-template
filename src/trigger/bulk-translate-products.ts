@@ -52,77 +52,84 @@ export const bulkTranslateProducts = task({
             return await res.json();
         };
 
-        // Process products sequentially (or in small chunks) to avoid rate limits
+        // Process products in chunks of 50 to respect API limits
+        const CHUNK_SIZE = 50;
         let processed = 0;
         let failed = 0;
 
-        for (const productId of productIds) {
+        for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
+            const chunkIds = productIds.slice(i, i + CHUNK_SIZE);
+            console.log(`📦 Processing chunk ${i / CHUNK_SIZE + 1} (${chunkIds.length} products)...`);
+            
             try {
-                // 1. Fetch Product Data
-                const productRes = await saleorFetch(`
-                    query GetProduct($id: ID!) {
-                        product(id: $id) {
-                            id
-                            name
-                            description
-                            translations {
-                                language {
-                                    code
+                // Batch fetch products by IDs (More reliable than single ID lookup for some contexts)
+                const productsRes = await saleorFetch(`
+                    query GetProductsBatch($ids: [ID!]!) {
+                        products(filter: { ids: $ids }, first: 50) {
+                            edges {
+                                node {
+                                    id
+                                    name
+                                    description
+                                    translations {
+                                        language {
+                                            code
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                `, { id: productId });
+                `, { ids: chunkIds });
 
-                const product = productRes.data?.product;
-                if (!product) {
-                    console.warn(`⚠️ Product not found for ID: ${productId}. Skipping.`);
-                    failed++;
+                const products = productsRes.data?.products?.edges || [];
+
+                if (products.length === 0) {
+                    console.warn(`⚠️ No products found in chunk. Ids: ${chunkIds.join(", ")}`);
+                    failed += chunkIds.length;
                     continue;
                 }
 
-                console.log(`🌍 [${processed + 1}/${productIds.length}] Translating: ${product.name} (${product.id})`);
+                for (const pEdge of products) {
+                    const product = pEdge.node;
+                    console.log(`🌍 [${processed + 1}/${productIds.length}] Translating: ${product.name} (${product.id})`);
 
-                const existingTranslations = new Set(product.translations.map((t: any) => t.language.code.toUpperCase()));
+                    const existingTranslations = new Set(product.translations.map((t: any) => t.language.code.toUpperCase()));
 
-                // 2. Translate to each language
-                for (const lang of TARGET_LANGUAGES) {
-                    if (existingTranslations.has(lang.code)) {
-                        // console.log(`⏩ Skipping ${lang.name} (already translated)`);
-                        continue;
-                    }
+                    for (const lang of TARGET_LANGUAGES) {
+                        if (existingTranslations.has(lang.code)) {
+                            continue;
+                        }
 
-                    console.log(`   ✍️ Translating to ${lang.name}...`);
+                        console.log(`   ✍️ Translating to ${lang.name}...`);
+                        const translatedName = await translateText(product.name, lang.name, geminiKey);
+                        const translatedDescription = await translateText(product.description || "", lang.name, geminiKey, true);
 
-                    const translatedName = await translateText(product.name, lang.name, geminiKey);
-                    const translatedDescription = await translateText(product.description || "", lang.name, geminiKey, true);
-
-                    // 3. Update Saleor Translation
-                    const updateRes = await saleorFetch(`
-                        mutation UpdateTranslation($id: ID!, $language: LanguageCodeEnum!, $input: TranslationInput!) {
-                            productTranslate(id: $id, languageCode: $language, input: $input) {
-                                errors { field message }
+                        const updateRes = await saleorFetch(`
+                            mutation UpdateTranslation($id: ID!, $language: LanguageCodeEnum!, $input: TranslationInput!) {
+                                productTranslate(id: $id, languageCode: $language, input: $input) {
+                                    errors { field message }
+                                }
                             }
-                        }
-                    `, {
-                        id: product.id,
-                        language: lang.code,
-                        input: {
-                            name: translatedName,
-                            description: translatedDescription
-                        }
-                    });
+                        `, {
+                            id: product.id,
+                            language: lang.code,
+                            input: {
+                                name: translatedName,
+                                description: translatedDescription
+                            }
+                        });
 
-                    if (updateRes.data?.productTranslate?.errors?.length > 0) {
-                        console.error(`   ❌ Failed to update ${lang.name} translation:`, updateRes.data.productTranslate.errors);
+                        if (updateRes.data?.productTranslate?.errors?.length > 0) {
+                            console.error(`   ❌ Failed to update ${lang.name} translation:`, updateRes.data.productTranslate.errors);
+                        }
                     }
+                    processed++;
                 }
-                
-                processed++;
 
             } catch (e) {
-                console.error(`❌ Error processing product ${productId}:`, e);
-                failed++;
+                console.error(`❌ Error processing chunk:`, e);
+                failed += chunkIds.length;
             }
         }
 
