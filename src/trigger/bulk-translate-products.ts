@@ -123,13 +123,20 @@ export const bulkTranslateProducts = task({
                         // Check availability via alias
                         const existingTranslation = product[`t_${lang.code}`];
                         
-                        // ONLY SKIP IF BOTH NAME AND DESCRIPTION ARE PRESENT
-                        if (existingTranslation && existingTranslation.name && existingTranslation.description) {
-                             // console.log(`   ⏩ Skipping ${lang.name} (already translated)`);
+                        // SKIP ONLY IF:
+                        // 1. Name is present
+                        // 2. Description is present
+                        // 3. Description is NOT identical to the source description (which would imply it was just verified/copied)
+                        //    (If description is identical, we assume it needs translation, effectively overwriting 'lazy' translations)
+                        const sourceDesc = product.description || "";
+                        const targetDesc = existingTranslation?.description || "";
+
+                        if (existingTranslation && existingTranslation.name && targetDesc && targetDesc !== sourceDesc) {
+                             // console.log(`   ⏩ Skipping ${lang.name} (already properly translated)`);
                              continue;
                         }
 
-                        // console.log(`   ✍️ Translating to ${lang.name}...`);
+                        console.log(`   ✍️ Translating to ${lang.name}...`);
                         const translatedName = await translateText(product.name, lang.name, geminiKey);
                         const translatedDescription = await translateText(product.description || "", lang.name, geminiKey, true);
 
