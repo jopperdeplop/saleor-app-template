@@ -81,6 +81,10 @@ export const syncBrandChannels = task({
             `, { brandId: brandPageId, after: endCursor });
 
             const products = productsRes.data?.products?.edges || [];
+            if (products.length === 0 && totalCount === 0) {
+                 console.log(`⚠️ No products found for brand ID: ${brandPageId}. Raw response:`, JSON.stringify(productsRes));
+            }
+
             hasNextPage = productsRes.data?.products?.pageInfo.hasNextPage;
             endCursor = productsRes.data?.products?.pageInfo.endCursor;
 
