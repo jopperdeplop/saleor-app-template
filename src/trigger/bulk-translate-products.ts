@@ -57,13 +57,17 @@ export const bulkTranslateProducts = task({
             const shopRes = await saleorFetch(`query { shop { name } }`);
             if (!shopRes.data?.shop) {
                  console.error("❌ Authentication check failed. Shop query returned null.", JSON.stringify(shopRes));
-                 // Don't throw immediately, try processing anyway, but it's bad sign.
             } else {
                  console.log(`✅ Connected to Saleor Shop: ${shopRes.data.shop.name}`);
             }
         } catch (e) {
              console.error("❌ Error connecting to Saleor:", e);
         }
+
+        // Build Translation Alias Query Part
+        const translationAliases = TARGET_LANGUAGES.map(lang => 
+            `t_${lang.code}: translation(languageCode: ${lang.code}) { name }`
+        ).join("\n");
 
         // Process products with concurrency limit
         const CONCURRENCY = 5;
@@ -81,16 +85,16 @@ export const bulkTranslateProducts = task({
                                 id
                                 name
                                 description
-                                translations { language { code } }
+                                ${translationAliases}
                             }
                         }
                     `, { id: productId });
 
                     let product = productRes.data?.product;
-
-                    // Fallback to Node query if Product query fails (sometimes works better for raw IDs)
+                    
+                    // Fallback to Node query if Product query fails
                     if (!product) {
-                        console.warn(`⚠️ product(id: "${productId}") returned null. Trying node(id)...`);
+                        // console.warn(`⚠️ product(id: "${productId}") returned null. Trying node(id)...`);
                         const nodeRes = await saleorFetch(`
                             query GetNode($id: ID!) {
                                 node(id: $id) {
@@ -98,7 +102,7 @@ export const bulkTranslateProducts = task({
                                         id
                                         name
                                         description
-                                        translations { language { code } }
+                                        ${translationAliases}
                                     }
                                 }
                             }
@@ -115,10 +119,13 @@ export const bulkTranslateProducts = task({
 
                     console.log(`🌍 Translating: ${product.name} (${product.id})`);
 
-                    const existingTranslations = new Set(product.translations.map((t: any) => t.language.code.toUpperCase()));
-
                     for (const lang of TARGET_LANGUAGES) {
-                        if (existingTranslations.has(lang.code)) continue;
+                        // Check availability via alias
+                        const existingTranslation = product[`t_${lang.code}`];
+                        if (existingTranslation && existingTranslation.name) {
+                             // console.log(`   ⏩ Skipping ${lang.name} (already translated)`);
+                             continue;
+                        }
 
                         // console.log(`   ✍️ Translating to ${lang.name}...`);
                         const translatedName = await translateText(product.name, lang.name, geminiKey);
@@ -149,8 +156,6 @@ export const bulkTranslateProducts = task({
             }));
         }
         
-        console.log(`✅ Bulk translation finished. Processed: ${processed}, Failed: ${failed}`);
-
         console.log(`✅ Bulk translation finished. Processed: ${processed}, Failed: ${failed}`);
     }
 });
