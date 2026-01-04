@@ -66,7 +66,7 @@ export const bulkTranslateProducts = task({
 
         // Build Translation Alias Query Part
         const translationAliases = TARGET_LANGUAGES.map(lang => 
-            `t_${lang.code}: translation(languageCode: ${lang.code}) { name }`
+            `t_${lang.code}: translation(languageCode: ${lang.code}) { name description }`
         ).join("\n");
 
         // Process products with concurrency limit
@@ -122,7 +122,9 @@ export const bulkTranslateProducts = task({
                     for (const lang of TARGET_LANGUAGES) {
                         // Check availability via alias
                         const existingTranslation = product[`t_${lang.code}`];
-                        if (existingTranslation && existingTranslation.name) {
+                        
+                        // ONLY SKIP IF BOTH NAME AND DESCRIPTION ARE PRESENT
+                        if (existingTranslation && existingTranslation.name && existingTranslation.description) {
                              // console.log(`   ⏩ Skipping ${lang.name} (already translated)`);
                              continue;
                         }
