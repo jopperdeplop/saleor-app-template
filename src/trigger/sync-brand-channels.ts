@@ -129,6 +129,9 @@ export const syncBrandChannels = task({
                         }
                     });
                 }
+                
+                // 📢 Trigger Translation Task (Runs for every product found, ensuring translations are up to date)
+                await translateProduct.trigger({ productId: p.id });
             }
         }
 
