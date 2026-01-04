@@ -64,8 +64,8 @@ export const syncBrandChannels = task({
 
         while (hasNextPage) {
             const productsRes = await saleorFetch(`
-                query GetProducts($brandId: String!, $after: String) {
-                    products(filter: { attributes: [{ slug: "brand", values: [$brandId] }] }, first: 50, after: $after) {
+                query GetProducts($brandVal: String!, $after: String) {
+                    products(filter: { attributes: [{ slug: "brand", values: [$brandVal] }] }, first: 50, after: $after) {
                         pageInfo { hasNextPage endCursor }
                         edges {
                             node {
@@ -78,7 +78,7 @@ export const syncBrandChannels = task({
                         }
                     }
                 }
-            `, { brandId: brandPageId, after: endCursor });
+            `, { brandVal: brandSlug, after: endCursor });
 
             const products = productsRes.data?.products?.edges || [];
             if (products.length === 0 && totalCount === 0) {
