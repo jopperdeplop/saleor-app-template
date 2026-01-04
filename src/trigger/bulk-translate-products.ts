@@ -177,7 +177,8 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
         : `Translate the following product name into ${targetLanguage}. If the name contains terms that are commonly used in ${targetLanguage} (like "Snowboard" in Dutch) or proper brand names, keep them in their original form. Return ONLY the final translated string.\n\nContent: ${text}`;
 
     try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        // Updated to Gemini 2.0 Flash Lite as requested
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
