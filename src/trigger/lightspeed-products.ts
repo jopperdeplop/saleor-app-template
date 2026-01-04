@@ -223,7 +223,8 @@ export const lightspeedProductSync = task({
                 productType: PRODUCT_TYPE_ID,
                 category: CATEGORY_ID,
                 description: textToEditorJs(p.description || p.name),
-                externalReference: p.id
+                externalReference: p.id,
+                metadata: [{ key: "brand", value: officialBrandName }]
             };
 
             if (finalProductId) {

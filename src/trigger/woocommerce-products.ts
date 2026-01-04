@@ -325,7 +325,8 @@ export const woocommerceProductSync = task({
                         externalReference: p.id.toString(),
                         productType: PRODUCT_TYPE_ID,
                         category: CATEGORY_ID,
-                        description: textToEditorJs(p.description || p.short_description || p.name)
+                        description: textToEditorJs(p.description || p.short_description || p.name),
+                        metadata: [{ key: "brand", value: officialBrandName }]
                     }
                 });
                 finalProductId = createProdRes.data?.productCreate?.product?.id;
@@ -334,7 +335,8 @@ export const woocommerceProductSync = task({
                     id: finalProductId,
                     input: {
                         description: textToEditorJs(p.description || p.short_description || p.name),
-                        externalReference: p.id.toString()
+                        externalReference: p.id.toString(),
+                        metadata: [{ key: "brand", value: officialBrandName }]
                     }
                 });
             }

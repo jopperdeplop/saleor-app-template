@@ -330,7 +330,8 @@ export const shopifyProductSync = task({
                         externalReference: p.id.split('/').pop(),
                         productType: PRODUCT_TYPE_ID,
                         category: CATEGORY_ID,
-                        description: textToEditorJs(p.descriptionHtml || p.title)
+                        description: textToEditorJs(p.descriptionHtml || p.title),
+                        metadata: [{ key: "brand", value: vendorName }]
                     }
                 });
                 finalProductId = createProdRes.data?.productCreate?.product?.id;
@@ -339,7 +340,8 @@ export const shopifyProductSync = task({
                     id: finalProductId,
                     input: {
                         description: textToEditorJs(p.descriptionHtml || p.title),
-                        externalReference: p.id.split('/').pop()
+                        externalReference: p.id.split('/').pop(),
+                        metadata: [{ key: "brand", value: vendorName }]
                     }
                 });
             }
