@@ -1,4 +1,5 @@
 import { task } from "@trigger.dev/sdk";
+import { translateProduct } from "./translate-product";
 import { db } from "../db";
 import { users, productOverrides } from "../db/schema";
 import { eq } from "drizzle-orm";
