@@ -61,7 +61,11 @@ export const translateProduct = task({
         `, { id: payload.productId });
 
         const product = productRes.data?.product;
-        if (!product) throw new Error("Product not found");
+        if (!product) {
+            console.error("❌ Product lookup failed. Query:", JSON.stringify({ query: "GetProduct", variables: { id: payload.productId } }));
+            console.error("❌ Response:", JSON.stringify(productRes));
+            throw new Error(`Product not found for ID: ${payload.productId}`);
+        }
 
         console.log(`🌍 Translating Product: ${product.name} (${product.id})`);
 
