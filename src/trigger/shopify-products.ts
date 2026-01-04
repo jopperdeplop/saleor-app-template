@@ -417,11 +417,11 @@ export const shopifyProductSync = task({
                         const priceListings = activeChannels.map((ch: any) => ({
                             channelId: ch.id,
                             price: price,
-                            originalPrice: parseFloat(v.compare_at_price || price.toString())
+                            costPrice: parseFloat(v.compare_at_price || price.toString())
                         }));
-                        await saleorFetch(`mutation UpdVarChan($id:ID!,$input:ProductVariantChannelListingUpdateInput!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field message}}}`, {
+                        await saleorFetch(`mutation UpdVarChan($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field message}}}`, {
                             id: variantId,
-                            input: { updateChannels: priceListings }
+                            input: priceListings
                         });
                     }
                 }

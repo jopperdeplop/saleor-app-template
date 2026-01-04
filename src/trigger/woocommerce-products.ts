@@ -429,11 +429,11 @@ export const woocommerceProductSync = task({
                     const priceListings = activeChannels.map((ch: any) => ({
                         channelId: ch.id,
                         price: price,
-                        originalPrice: parseFloat(v.regular_price || price.toString())
+                        costPrice: parseFloat(v.regular_price || price.toString())
                     }));
-                    await saleorFetch(`mutation UpdVarChan($id:ID!,$input:ProductVariantChannelListingUpdateInput!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field message}}}`, {
+                    await saleorFetch(`mutation UpdVarChan($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field message}}}`, {
                         id: v.id,
-                        input: { updateChannels: priceListings }
+                        input: priceListings
                     });
                 }
             }
