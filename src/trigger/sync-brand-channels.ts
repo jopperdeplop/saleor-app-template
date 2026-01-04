@@ -52,7 +52,7 @@ export const syncBrandChannels = task({
         while (hasNextPage) {
             const productsRes = await saleorFetch(`
                 query GetProducts($brand: String!, $after: String) {
-                    products(filter: { attributes: [{ slug: "brand", values: [$brand] }] }, first: 50, after: $after) {
+                    products(filter: { metadata: { key: "brand", value: $brand } }, first: 50, after: $after) {
                         pageInfo { hasNextPage endCursor }
                         edges {
                             node {
