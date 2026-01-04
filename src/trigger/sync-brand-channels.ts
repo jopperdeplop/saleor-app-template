@@ -50,6 +50,10 @@ export const syncBrandChannels = task({
         let totalCount = 0;
 
         while (hasNextPage) {
+            // NOTE: The 'brand' attribute is a Page Reference. We must filter by the Page Slug, not the Title.
+            // Converting "Brand Name" -> "brand-name" (approximate slugification)
+            const brandSlug = payload.brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
             const productsRes = await saleorFetch(`
                 query GetProducts($brand: String!, $after: String) {
                     products(filter: { attributes: [{ slug: "brand", values: [$brand] }] }, first: 50, after: $after) {
@@ -65,7 +69,7 @@ export const syncBrandChannels = task({
                         }
                     }
                 }
-            `, { brand: payload.brandName, after: endCursor });
+            `, { brand: brandSlug, after: endCursor });
 
             const products = productsRes.data?.products?.edges || [];
             hasNextPage = productsRes.data?.products?.pageInfo.hasNextPage;
