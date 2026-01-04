@@ -1,5 +1,5 @@
 import { task } from "@trigger.dev/sdk";
-import { translateProduct } from "./translate-product";
+import { bulkTranslateProducts } from "./bulk-translate-products";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -211,6 +211,8 @@ export const lightspeedProductSync = task({
 
         // --- 4. SYNC TO SALEOR ---
 
+        const processedProductIds: Set<string> = new Set();
+
         for (const p of products) {
             console.log(`   🔄 Syncing: ${p.name} (${p.id})`);
 
@@ -324,10 +326,16 @@ export const lightspeedProductSync = task({
                 }
 
                 // 📢 Trigger Translation for this product
+                // 📢 Trigger Translation for this product
                 if (finalProductId) {
-                    await translateProduct.trigger({ productId: finalProductId });
+                    processedProductIds.add(finalProductId);
                 }
             }
+        }
+        
+        // 📢 Trigger Bulk Translation Task
+        if (processedProductIds.size > 0) {
+            await bulkTranslateProducts.trigger({ productIds: Array.from(processedProductIds) });
         }
 
         console.log(`✅ [${SYNC_VERSION}] Finished.`);

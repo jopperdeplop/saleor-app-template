@@ -1,5 +1,5 @@
 import { task } from "@trigger.dev/sdk";
-import { translateProduct } from "./translate-product";
+import { bulkTranslateProducts } from "./bulk-translate-products";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -307,6 +307,8 @@ export const woocommerceProductSync = task({
         // --- 5. PARALLEL PROCESSING ---
         console.log(`📦 Parallel Sync for ${products.length} products...`);
 
+        const processedProductIds: string[] = [];
+
         await Promise.all(products.map(async (p: any) => {
             const context = vendorContext.get(officialBrandName);
             const brandPageId = context?.brandPageId;
@@ -440,9 +442,14 @@ export const woocommerceProductSync = task({
             
             // 📢 Trigger Translation
             if (finalProductId) {
-                await translateProduct.trigger({ productId: finalProductId });
+                processedProductIds.push(finalProductId);
             }
         }));
+        
+        // 📢 Trigger Bulk Translation Task
+        if (processedProductIds.length > 0) {
+            await bulkTranslateProducts.trigger({ productIds: processedProductIds });
+        }
 
         console.log(`✅ [LITERAL-CLONE-V11-PRICEFIX] WooCommerce sync finished.`);
     }

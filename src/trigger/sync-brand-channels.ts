@@ -1,5 +1,5 @@
 import { task } from "@trigger.dev/sdk";
-import { translateProduct } from "./translate-product";
+import { bulkTranslateProducts } from "./bulk-translate-products";
 import { db } from "../db";
 import { users, productOverrides } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -49,6 +49,7 @@ export const syncBrandChannels = task({
         let hasNextPage = true;
         let endCursor: string | null = null;
         let totalCount = 0;
+        const processedProductIds: string[] = [];
 
         // STRATEGY CHANGE: Attribute Filtering is unreliable for Page References via API.
         // We will fallback to Metadata filtering which IS reliable now that we fixed the imports.
@@ -130,9 +131,16 @@ export const syncBrandChannels = task({
                     });
                 }
                 
-                // 📢 Trigger Translation Task (Runs for every product found, ensuring translations are up to date)
-                await translateProduct.trigger({ productId: p.id });
+                
+                // Collect ID for bulk translation
+                processedProductIds.push(p.id);
             }
+        }
+        
+        // 📢 Trigger Bulk Translation Task
+        if (processedProductIds.length > 0) {
+            console.log(`📢 Triggering bulk translation for ${processedProductIds.length} products...`);
+            await bulkTranslateProducts.trigger({ productIds: processedProductIds });
         }
 
         console.log(`✅ Finished syncing ${totalCount} products for ${payload.brandName}`);
