@@ -165,7 +165,7 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
 
     const prompt = isJson 
         ? `You are a professional e-commerce translator. Translate the following EditorJS JSON content into ${targetLanguage}. Keep the JSON structure identical, only translate the text values inside the blocks. Do not translate HTML tags or technical keys. Return ONLY the translated JSON.\n\nContent: ${text}`
-        : `Translate the following product name into ${targetLanguage}. Return ONLY the translated string.\n\nContent: ${text}`;
+        : `Translate the following product name into ${targetLanguage}. If the name contains terms that are commonly used in ${targetLanguage} (like "Snowboard" in Dutch) or proper brand names, keep them in their original form. Return ONLY the final translated string.\n\nContent: ${text}`;
 
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
@@ -176,11 +176,17 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
             })
         });
 
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error(`❌ Gemini API Error (${response.status}):`, errText);
+            return text;
+        }
+
         const data = await response.json();
         const translatedContent = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
         if (!translatedContent) {
-            console.warn(`⚠️ Gemini returned empty translation for ${targetLanguage}`);
+            console.warn(`⚠️ Gemini returned empty translation for ${targetLanguage}. Response:`, JSON.stringify(data));
             return text;
         }
 
