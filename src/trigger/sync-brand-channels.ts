@@ -49,14 +49,23 @@ export const syncBrandChannels = task({
         let endCursor: string | null = null;
         let totalCount = 0;
 
-        while (hasNextPage) {
-            // NOTE: The 'brand' attribute is a Page Reference. We must filter by the Page Slug, not the Title.
-            // Converting "Brand Name" -> "brand-name" (approximate slugification)
-            const brandSlug = payload.brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        // Pre-resolve Brand Page ID (since Attribute Filter expects ID for References)
+        const brandSlug = payload.brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        console.log(`🔎 Resolving Brand Page for slug: "${brandSlug}"...`);
+        
+        const pageRes = await saleorFetch(`query GetPage($s: String!) { page(slug: $s) { id } }`, { s: brandSlug });
+        const brandPageId = pageRes.data?.page?.id;
 
+        if (!brandPageId) {
+             console.warn(`⚠️ Brand page not found for slug: ${brandSlug}. Cannot filter products.`);
+             return; // Exit if we can't identify the brand page
+        }
+        console.log(`✅ Found Brand Page ID: ${brandPageId}`);
+
+        while (hasNextPage) {
             const productsRes = await saleorFetch(`
-                query GetProducts($brand: String!, $after: String) {
-                    products(filter: { attributes: [{ slug: "brand", values: [$brand] }] }, first: 50, after: $after) {
+                query GetProducts($brandId: String!, $after: String) {
+                    products(filter: { attributes: [{ slug: "brand", values: [$brandId] }] }, first: 50, after: $after) {
                         pageInfo { hasNextPage endCursor }
                         edges {
                             node {
@@ -69,7 +78,7 @@ export const syncBrandChannels = task({
                         }
                     }
                 }
-            `, { brand: brandSlug, after: endCursor });
+            `, { brandId: brandPageId, after: endCursor });
 
             const products = productsRes.data?.products?.edges || [];
             hasNextPage = productsRes.data?.products?.pageInfo.hasNextPage;
