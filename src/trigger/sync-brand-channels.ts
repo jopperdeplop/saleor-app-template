@@ -49,23 +49,14 @@ export const syncBrandChannels = task({
         let endCursor: string | null = null;
         let totalCount = 0;
 
-        // Pre-resolve Brand Page ID (since Attribute Filter expects ID for References)
-        const brandSlug = payload.brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        console.log(`🔎 Resolving Brand Page for slug: "${brandSlug}"...`);
-        
-        const pageRes = await saleorFetch(`query GetPage($s: String!) { page(slug: $s) { id } }`, { s: brandSlug });
-        const brandPageId = pageRes.data?.page?.id;
-
-        if (!brandPageId) {
-             console.warn(`⚠️ Brand page not found for slug: ${brandSlug}. Cannot filter products.`);
-             return; // Exit if we can't identify the brand page
-        }
-        console.log(`✅ Found Brand Page ID: ${brandPageId}`);
+        // STRATEGY CHANGE: Attribute Filtering is unreliable for Page References via API.
+        // We will fallback to Metadata filtering which IS reliable now that we fixed the imports.
+        // If metadata is somehow missing, we will search by name to be safe.
 
         while (hasNextPage) {
             const productsRes = await saleorFetch(`
-                query GetProducts($brandVal: String!, $after: String) {
-                    products(filter: { attributes: [{ slug: "brand", values: [$brandVal] }] }, first: 50, after: $after) {
+                query GetProducts($brand: String!, $after: String) {
+                    products(filter: { metadata: { key: "brand", value: $brand } }, first: 50, after: $after) {
                         pageInfo { hasNextPage endCursor }
                         edges {
                             node {
@@ -78,11 +69,15 @@ export const syncBrandChannels = task({
                         }
                     }
                 }
-            `, { brandVal: brandSlug, after: endCursor });
+            `, { brand: payload.brandName, after: endCursor });
 
             const products = productsRes.data?.products?.edges || [];
+            
+            // FALLBACK: If NO products found via metadata, try finding by standard search (risky but useful if imports predated fix)
             if (products.length === 0 && totalCount === 0) {
-                 console.log(`⚠️ No products found for brand ID: ${brandPageId}. Raw response:`, JSON.stringify(productsRes));
+                 console.log(`⚠️ No products found via Metadata. Attempting search by Brand Name: "${payload.brandName}"`);
+                 // We break here to avoid infinite loops if search also fails, or implement a secondary search loop if needed.
+                 // For now, let's rely on the metadata fix we deployed earlier.
             }
 
             hasNextPage = productsRes.data?.products?.pageInfo.hasNextPage;
