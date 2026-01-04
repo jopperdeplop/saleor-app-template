@@ -405,7 +405,7 @@ export const woocommerceProductSync = task({
                 });
                 const variantId = varRes.data?.productVariantCreate?.productVariant?.id;
                 if (variantId) {
-                    variantsToProcess.push({ id: variantId, price: v.price, predictableRef: predictableVariantRef });
+                    variantsToProcess.push({ id: variantId, price: v.price, regular_price: v.regular_price, predictableRef: predictableVariantRef });
                 }
             }
 
