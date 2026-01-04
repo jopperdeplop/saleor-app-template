@@ -1,5 +1,5 @@
-
 import { task } from "@trigger.dev/sdk";
+import { translateProduct } from "./translate-product";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -320,6 +320,11 @@ export const lightspeedProductSync = task({
                     await saleorFetch(`mutation Price($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
                         id: variantId, input: priceListings
                     });
+                }
+
+                // 📢 Trigger Translation for this product
+                if (finalProductId) {
+                    await translateProduct.trigger({ productId: finalProductId });
                 }
             }
         }

@@ -1,4 +1,5 @@
 import { task } from "@trigger.dev/sdk";
+import { translateProduct } from "./translate-product";
 import { db } from "../db";
 import { integrations, users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -410,13 +411,24 @@ export const shopifyProductSync = task({
                 const variantId = findVar.data?.productVariant?.id;
 
                 if (variantId) {
-                    const priceListings = activeChannels.map((ch: any) => ({
-                        channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
-                    }));
-                    await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
-                        id: variantId, input: priceListings
-                    });
+                    const price = parseFloat(v.price || "0");
+                    if (price > 0) {
+                        const priceListings = activeChannels.map((ch: any) => ({
+                            channelId: ch.id,
+                            price: price,
+                            originalPrice: parseFloat(v.compare_at_price || price.toString())
+                        }));
+                        await saleorFetch(`mutation UpdVarChan($id:ID!,$input:ProductVariantChannelListingUpdateInput!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field message}}}`, {
+                            id: variantId,
+                            input: { updateChannels: priceListings }
+                        });
+                    }
                 }
+            }
+
+            // 📢 Trigger Translation
+            if (finalProductId) {
+                await translateProduct.trigger({ productId: finalProductId });
             }
         }));
 
