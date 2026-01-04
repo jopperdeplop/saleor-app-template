@@ -143,22 +143,43 @@ export const setupEurozoneChannels = task({
 
             if (existingMethods.length === 0) {
                 console.log(`📦 Adding Standard Shipping Method to ${zoneName}`);
-                await saleorFetch(`
-                    mutation CreateMethod($input: ShippingPriceInput!, $zoneId: ID!) {
-                        shippingPriceCreate(input: $input, shippingZone: $zoneId) {
+                const methodRes = await saleorFetch(`
+                    mutation CreateMethod($input: ShippingPriceInput!) {
+                        shippingPriceCreate(input: $input) {
                             shippingMethod { id }
                             errors { field message }
                         }
                     }
                 `, {
-                    zoneId: zoneId,
                     input: {
                         name: "Standard Shipping",
                         type: "PRICE",
-                        price: 0,
-                        channelId: channelId
+                        shippingZone: zoneId
                     }
                 });
+
+                const methodId = methodRes.data?.shippingPriceCreate?.shippingMethod?.id;
+                
+                if (methodId) {
+                    console.log(`🔗 Linking Shipping Method to Channel: ${country.channel}`);
+                    await saleorFetch(`
+                        mutation UpdateListing($id: ID!, $input: ShippingMethodChannelListingInput!) {
+                            shippingMethodChannelListingUpdate(id: $id, input: $input) {
+                                errors { field message }
+                            }
+                        }
+                    `, {
+                        id: methodId,
+                        input: {
+                            addChannels: [{
+                                channelId: channelId,
+                                price: 0
+                            }]
+                        }
+                    });
+                } else {
+                    console.error(`❌ Failed to create shipping method for ${zoneName}`);
+                }
             } else {
                 console.log(`✅ Shipping methods already exist for ${zoneName}.`);
             }
