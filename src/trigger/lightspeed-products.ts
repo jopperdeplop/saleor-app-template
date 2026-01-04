@@ -105,9 +105,9 @@ export const lightspeedProductSync = task({
         // --- 2. CORE SYNC HELPERS ---
 
         const getSaleorChannels = async () => {
-            const query = `{ channels(filter: { isActive: true }) { id slug currencyCode isActive } }`;
+            const query = `{ channels { id slug currencyCode isActive } }`;
             const json = await saleorFetch(query);
-            return json.data?.channels || [];
+            return (json.data?.channels || []).filter((c: any) => c.isActive);
         };
 
         const getOrCreateBrandPage = async (name: string) => {

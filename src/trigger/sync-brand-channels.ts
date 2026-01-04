@@ -39,9 +39,9 @@ export const syncBrandChannels = task({
         const globalCountries = (user.shippingCountries as string[]) || [];
         console.log(`🔄 Syncing channels for ${payload.brandName}. Global countries: ${globalCountries.join(", ")}`);
 
-        // 2. Get All ACTIVE Channels in Saleor
-        const channelsRes = await saleorFetch(`query { channels(filter: { isActive: true }) { id slug } }`);
-        const allChannels = channelsRes.data?.channels || [];
+        // 2. Get All Channels in Saleor
+        const channelsRes = await saleorFetch(`query { channels { id slug isActive } }`);
+        const allChannels = (channelsRes.data?.channels || []).filter((c: any) => c.isActive);
         const channelSlugToId = new Map(allChannels.map((c: any) => [c.slug, c.id]));
 
         // 3. Fetch Brand Products from Saleor (Paginated)
