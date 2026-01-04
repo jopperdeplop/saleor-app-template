@@ -9,6 +9,7 @@ export const users = pgTable('users', {
     role: text('role').default('vendor').notNull(), // 'admin' or 'vendor'
     vatNumber: text('vat_number'),
     warehouseAddress: jsonb('warehouse_address'), // { street, city, zip, country }
+    shippingCountries: jsonb('shipping_countries').default([]), // Array of country codes e.g. ['NL', 'BE', 'DE']
     createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -40,4 +41,21 @@ export const saleorAuth = pgTable('saleor_auth', {
     token: text('token').notNull(),
     appId: text('app_id').notNull(),
     jwks: text('jwks'),
+});
+
+export const featureRequests = pgTable('feature_requests', {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').references(() => users.id).notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull(),
+    priority: text('priority').default('medium').notNull(), // 'low', 'medium', 'high'
+    status: text('status').default('pending').notNull(), // 'pending', 'approved', 'rejected', 'implemented'
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const productOverrides = pgTable('product_overrides', {
+    id: serial('id').primaryKey(),
+    productId: text('product_id').notNull().unique(), // Saleor Product ID
+    shippingCountries: jsonb('shipping_countries').notNull(), // Array of country codes
+    updatedAt: timestamp('updated_at').defaultNow(),
 });

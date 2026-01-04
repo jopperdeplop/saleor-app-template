@@ -35,6 +35,9 @@
 - **Package Manager**: Use `pnpm`.
 - **Automated Guardrails**:
   - **Trigger.dev**: Lint rules BLOCK importing `@trigger.dev/sdk/v3`. Use v4.
+- **Multi-Channel Automation**:
+  - **Tasks**: `setup-eurozone-channels`, `translate-product`, `sync-brand-channels`, `auto-assign-product-channels`.
+  - **Shared Database**: This repo shares its Vercel Postgres database with `SaleorPortal`. Schema changes MUST be synced in both places to prevent data loss.
 - **Documentation Maintenance**: If you add new major tech, change the build process, or discover a repeated "gotcha", YOU MUST update this file (`AGENTS.md`) to reflect the new state. Keep it living.
 
 ## 3. Map of the Territory
