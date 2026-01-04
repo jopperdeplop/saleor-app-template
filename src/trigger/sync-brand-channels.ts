@@ -39,8 +39,8 @@ export const syncBrandChannels = task({
         const globalCountries = (user.shippingCountries as string[]) || [];
         console.log(`🔄 Syncing channels for ${payload.brandName}. Global countries: ${globalCountries.join(", ")}`);
 
-        // 2. Get All Channels in Saleor
-        const channelsRes = await saleorFetch(`query { channels { id slug } }`);
+        // 2. Get All ACTIVE Channels in Saleor
+        const channelsRes = await saleorFetch(`query { channels(filter: { isActive: true }) { id slug } }`);
         const allChannels = channelsRes.data?.channels || [];
         const channelSlugToId = new Map(allChannels.map((c: any) => [c.slug, c.id]));
 
@@ -77,7 +77,12 @@ export const syncBrandChannels = task({
 
                 // 4. Determine target countries (check for overrides)
                 const override = await db.select().from(productOverrides).where(eq(productOverrides.productId, p.id)).limit(1);
-                const targetCountries = override[0] ? (override[0].shippingCountries as string[]) : globalCountries;
+                
+                // OPT-OUT LOGIC: If no countries selected globally/override, default to ALL 20 Eurozone countries
+                let targetCountries = override[0] ? (override[0].shippingCountries as string[]) : globalCountries;
+                if (!targetCountries || targetCountries.length === 0) {
+                    targetCountries = Object.keys(COUNTRY_TO_CHANNEL);
+                }
                 
                 const targetChannelSlugs = targetCountries.map(c => COUNTRY_TO_CHANNEL[c]).filter(Boolean);
                 const targetChannelIds = targetChannelSlugs.map(slug => channelSlugToId.get(slug)).filter(Boolean) as string[];

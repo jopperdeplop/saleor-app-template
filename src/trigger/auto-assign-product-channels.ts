@@ -41,14 +41,14 @@ export const autoAssignProductChannels = task({
             return;
         }
 
-        const targetCountries = (user.shippingCountries as string[]) || [];
+        // OPT-OUT LOGIC: Default to all 20 countries if none selected for brand
+        let targetCountries = (user.shippingCountries as string[]) || [];
         if (targetCountries.length === 0) {
-            console.log(`ℹ️ Brand ${payload.brand} has no shipping countries selected.`);
-            return;
+            targetCountries = Object.keys(COUNTRY_TO_CHANNEL);
         }
 
-        // 2. Get All Channels in Saleor
-        const channelsRes = await saleorFetch(`query { channels { id slug } }`);
+        // 2. Get All ACTIVE Channels in Saleor
+        const channelsRes = await saleorFetch(`query { channels(filter: { isActive: true }) { id slug } }`);
         const allChannels = channelsRes.data?.channels || [];
         const channelSlugToId = new Map(allChannels.map((c: any) => [c.slug, c.id]));
 

@@ -13,6 +13,13 @@ const PRODUCT_TYPE_ID = process.env.SALEOR_PRODUCT_TYPE_ID;
 const CATEGORY_ID = process.env.SALEOR_CATEGORY_ID;
 const DEFAULT_WAREHOUSE_ID = process.env.SALEOR_WAREHOUSE_ID;
 const PHOTOROOM_API_KEY = process.env.PHOTOROOM_API_KEY;
+const COUNTRY_TO_CHANNEL: Record<string, string> = {
+    "AT": "austria", "BE": "belgium", "HR": "croatia", "CY": "cyprus",
+    "EE": "estonia", "FI": "finland", "FR": "france", "DE": "germany",
+    "GR": "greece", "IE": "ireland", "IT": "italy", "LV": "latvia",
+    "LT": "lithuania", "LU": "luxembourg", "MT": "malta", "NL": "netherlands",
+    "PT": "portugal", "SK": "slovakia", "SI": "slovenia", "ES": "spain"
+};
 
 // --- HELPERS ---
 
@@ -49,7 +56,8 @@ export const shopifyProductSync = task({
             accessToken: integrations.accessToken,
             storeUrl: integrations.storeUrl,
             provider: integrations.provider,
-            brandName: users.brand
+            brandName: users.brand,
+            settings: integrations.settings
         })
             .from(integrations)
             .innerJoin(users, eq(integrations.userId, users.id))
@@ -144,7 +152,7 @@ export const shopifyProductSync = task({
         // --- 3. CORE SYNC FUNCTIONS ---
 
         const getSaleorChannels = async () => {
-            const query = `{ channels { id slug currencyCode isActive } }`;
+            const query = `{ channels(filter: { isActive: true }) { id slug currencyCode isActive } }`;
             const json = await saleorFetch(query);
             return json.data?.channels || [];
         };
@@ -166,17 +174,9 @@ export const shopifyProductSync = task({
             return create.data?.pageCreate?.page?.id;
         };
 
-        const getOrCreateShippingZone = async (name: string) => {
-            const find = await saleorFetch(`query Find($s:String!){shippingZones(filter:{search:$s},first:5){edges{node{id name}}}}`, { s: name });
-            const existing = find.data?.shippingZones?.edges?.find((e: any) => e.node.name === name)?.node;
-            if (existing) return existing.id;
-
-            console.log(`   🚚 Creating Shipping Zone: "${name}"`);
-            const countries = ["DE", "FR", "GB", "IT", "ES", "PL", "NL", "BE", "AT", "PT", "SE", "DK", "FI", "NO", "IE", "US", "CA"];
-            const create = await saleorFetch(`mutation CreateZone($input:ShippingZoneCreateInput!){shippingZoneCreate(input:$input){shippingZone{id} errors{message}}}`, {
-                input: { name, countries }
-            });
-            return create.data?.shippingZoneCreate?.shippingZone?.id;
+        const getOrCreateShippingZones = async () => {
+            const find = await saleorFetch(`query { shippingZones(first:100) { edges { node { id name } } } }`);
+            return find.data?.shippingZones?.edges?.map((e: any) => e.node) || [];
         };
 
         const getOrCreateWarehouse = async (vendorName: string, channels: any[]) => {
@@ -218,10 +218,10 @@ export const shopifyProductSync = task({
                 for (const ch of channels) {
                     await saleorFetch(`mutation UpdCh($id:ID!,$input:ChannelUpdateInput!){channelUpdate(id:$id,input:$input){errors{field}}}`, { id: ch.id, input: { addWarehouses: [newId] } });
                 }
-                // Link to Shipping Zone
-                const zoneId = await getOrCreateShippingZone("Europe");
-                if (zoneId) {
-                    await saleorFetch(`mutation UpdZone($id:ID!,$input:ShippingZoneUpdateInput!){shippingZoneUpdate(id:$id,input:$input){errors{field}}}`, { id: zoneId, input: { addWarehouses: [newId] } });
+                // Link to EVERY Shipping Zone (ensure global fulfillability for vendor)
+                const zones = await getOrCreateShippingZones();
+                for (const zone of zones) {
+                    await saleorFetch(`mutation UpdZone($id:ID!,$input:ShippingZoneUpdateInput!){shippingZoneUpdate(id:$id,input:$input){errors{field}}}`, { id: zone.id, input: { addWarehouses: [newId] } });
                 }
             }
             return newId;
@@ -283,7 +283,14 @@ export const shopifyProductSync = task({
         }
 
         const channels = await getSaleorChannels();
-        if (channels.length === 0) { console.error("❌ No Channels found."); return; }
+        const globalCountries = (integrationData[0]?.settings as any)?.shippingCountries || [];
+        const isOptOut = !globalCountries || globalCountries.length === 0;
+        const targetCountryCodes = isOptOut ? Object.keys(COUNTRY_TO_CHANNEL) : globalCountries;
+        const activeChannels = channels.filter((ch: any) => 
+            targetCountryCodes.some((c: string) => COUNTRY_TO_CHANNEL[c] === ch.slug)
+        );
+
+        if (channels.length === 0) { console.error("❌ No Active Channels found."); return; }
 
         // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
         // --- 4. SETUP CONTEXT (DEDUPLICATION) ---
@@ -378,7 +385,7 @@ export const shopifyProductSync = task({
 
             // --- 📢 Step 2: Ensure Product is in Channels (Saleor requirement for Variant Prices) ---
             const dateStr = new Date().toISOString().split('T')[0];
-            const channelListings = channels.map((ch: any) => ({
+            const channelListings = activeChannels.map((ch: any) => ({
                 channelId: ch.id,
                 isPublished: true,
                 publicationDate: dateStr,
@@ -401,7 +408,7 @@ export const shopifyProductSync = task({
                 const variantId = findVar.data?.productVariant?.id;
 
                 if (variantId) {
-                    const priceListings = channels.map((ch: any) => ({
+                    const priceListings = activeChannels.map((ch: any) => ({
                         channelId: ch.id, price: parseFloat(v.price || "0"), costPrice: parseFloat(v.price || "0")
                     }));
                     await saleorFetch(`mutation UpdatePrice($id:ID!,$input:[ProductVariantChannelListingAddInput!]!){productVariantChannelListingUpdate(id:$id,input:$input){errors{field}}}`, {
