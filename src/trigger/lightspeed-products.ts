@@ -57,6 +57,7 @@ export const lightspeedProductSync = task({
             storeUrl: integrations.storeUrl,
             provider: integrations.provider,
             brandName: users.brand,
+            shippingCountries: users.shippingCountries,
             settings: integrations.settings
         })
             .from(integrations)
@@ -161,7 +162,7 @@ export const lightspeedProductSync = task({
         }
 
         const channels = await getSaleorChannels();
-        const globalCountries = (integrationData[0]?.settings as any)?.shippingCountries || [];
+        const globalCountries = (integrationData[0]?.shippingCountries as string[]) || [];
         const isOptOut = !globalCountries || globalCountries.length === 0;
         const targetCountryCodes = isOptOut ? Object.keys(COUNTRY_TO_CHANNEL) : globalCountries;
         const activeChannels = channels.filter((ch: any) => 
