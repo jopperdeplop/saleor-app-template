@@ -108,15 +108,25 @@ export const testTranslationTask = task({
             const targetName = existingTranslation?.name || "";
 
             console.log(`   Existing Translation: Name="${targetName}", Desc="${targetDesc.substring(0, 30)}..."`);
+            
+            // Normalize descriptions to compare CONTENT only (ignoring JSON timestamps/ids)
+            const sourceSig = getContentSignature(sourceDesc);
+            const targetSig = getContentSignature(targetDesc);
+            
+            const isDescContentDifferent = sourceSig !== targetSig;
 
-            if (existingTranslation && existingTranslation.name && targetDesc && targetDesc !== sourceDesc) {
-                console.log(`   ⏩ SKIPPING: Valid translation already exists.`);
+            // SKIP ONLY IF:
+            // 1. Name is present
+            // 2. Description is present
+            // 3. Description CONTENT is different from source (implies meaningful translation)
+            if (existingTranslation && existingTranslation.name && targetDesc && isDescContentDifferent) {
+                console.log(`   ⏩ SKIPPING: Valid translation already exists (Content differs from source).`);
                 continue;
             }
 
             if (!targetDesc) console.log("   ➤ Reason to Translate: Description is missing.");
-            else if (targetDesc === sourceDesc) console.log("   ➤ Reason to Translate: Description matches source (untranslated).");
-            else console.log("   ➤ Reason to Translate: Name is missing.");
+            else if (!isDescContentDifferent) console.log("   ➤ Reason to Translate: Description content matches source (untranslated).");
+            else console.log("   ➤ Reason to Translate: Name is missing?");
 
             console.log(`   ✍️ Translating to ${lang.name}...`);
             
@@ -188,6 +198,19 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
         return translatedContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
     } catch (e) {
         console.error(`      ❌ Translation error for ${targetLanguage}:`, e);
+        return text;
+    }
+}
+
+function getContentSignature(text: string): string {
+    if (!text) return "";
+    try {
+        const obj = JSON.parse(text);
+        if (obj.blocks && Array.isArray(obj.blocks)) {
+             return obj.blocks.map((b: any) => b.data?.text || "").join("").trim();
+        }
+        return text;
+    } catch (e) {
         return text;
     }
 }
