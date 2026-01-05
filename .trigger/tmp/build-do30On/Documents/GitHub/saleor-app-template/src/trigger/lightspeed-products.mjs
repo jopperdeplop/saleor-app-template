@@ -1,6 +1,6 @@
 import {
   bulkTranslateProducts
-} from "../../../../../chunk-VTDZGDM7.mjs";
+} from "../../../../../chunk-QAHN6WAL.mjs";
 import {
   db,
   eq,

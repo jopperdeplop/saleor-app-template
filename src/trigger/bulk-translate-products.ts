@@ -126,12 +126,12 @@ export const bulkTranslateProducts = task({
                         // SKIP ONLY IF:
                         // 1. Name is present
                         // 2. Description is present
-                        // 3. Description is NOT identical to the source description (which would imply it was just verified/copied)
-                        //    (If description is identical, we assume it needs translation, effectively overwriting 'lazy' translations)
-                        const sourceDesc = product.description || "";
-                        const targetDesc = existingTranslation?.description || "";
+                        // 3. Description CONTENT is different from source (implies meaningful translation)
+                        //    (If description content matches source, it's likely just copied English/Default)
+                        const sourceSig = getContentSignature(product.description || "");
+                        const targetSig = getContentSignature(existingTranslation?.description || "");
 
-                        if (existingTranslation && existingTranslation.name && targetDesc && targetDesc !== sourceDesc) {
+                        if (existingTranslation && existingTranslation.name && existingTranslation.description && sourceSig !== targetSig) {
                              // console.log(`   ⏩ Skipping ${lang.name} (already properly translated)`);
                              continue;
                         }
@@ -204,6 +204,19 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
         return translatedContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
     } catch (e) {
         console.error(`❌ Translation error for ${targetLanguage}:`, e);
+        return text;
+    }
+}
+
+function getContentSignature(text: string): string {
+    if (!text) return "";
+    try {
+        const obj = JSON.parse(text);
+        if (obj.blocks && Array.isArray(obj.blocks)) {
+             return obj.blocks.map((b: any) => b.data?.text || "").join("").trim();
+        }
+        return text;
+    } catch (e) {
         return text;
     }
 }
