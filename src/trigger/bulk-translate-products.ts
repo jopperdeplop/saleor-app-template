@@ -120,22 +120,6 @@ export const bulkTranslateProducts = task({
                     console.log(`🌍 Translating: ${product.name} (${product.id})`);
 
                     for (const lang of TARGET_LANGUAGES) {
-                        // Check availability via alias
-                        const existingTranslation = product[`t_${lang.code}`];
-                        
-                        // SKIP ONLY IF:
-                        // 1. Name is present
-                        // 2. Description is present
-                        // 3. Description CONTENT is different from source (implies meaningful translation)
-                        //    (If description content matches source, it's likely just copied English/Default)
-                        const sourceSig = getContentSignature(product.description || "");
-                        const targetSig = getContentSignature(existingTranslation?.description || "");
-
-                        if (existingTranslation && existingTranslation.name && existingTranslation.description && sourceSig !== targetSig) {
-                             // console.log(`   ⏩ Skipping ${lang.name} (already properly translated)`);
-                             continue;
-                        }
-
                         console.log(`   ✍️ Translating to ${lang.name}...`);
                         const translatedName = await translateText(product.name, lang.name, geminiKey);
                         const translatedDescription = await translateText(product.description || "", lang.name, geminiKey, true);

@@ -98,35 +98,9 @@ export const testTranslationTask = task({
         console.log(`✅ Found Product: ${product.name} (${product.id})`);
         console.log(`📝 Source Description: "${product.description?.substring(0, 50)}..."`);
 
-        // 2. Iterate Languages
+        // 2. Iterate Languages and Force Translate All
         for (const lang of TARGET_LANGUAGES) {
-            console.log(`\n--- checking Language: ${lang.name} (${lang.code}) ---`);
-            
-            const existingTranslation = product[`t_${lang.code}`];
-            const sourceDesc = product.description || "";
-            const targetDesc = existingTranslation?.description || "";
-            const targetName = existingTranslation?.name || "";
-
-            console.log(`   Existing Translation: Name="${targetName}", Desc="${targetDesc.substring(0, 30)}..."`);
-            
-            // Normalize descriptions to compare CONTENT only (ignoring JSON timestamps/ids)
-            const sourceSig = getContentSignature(sourceDesc);
-            const targetSig = getContentSignature(targetDesc);
-            
-            const isDescContentDifferent = sourceSig !== targetSig;
-
-            // SKIP ONLY IF:
-            // 1. Name is present
-            // 2. Description is present
-            // 3. Description CONTENT is different from source (implies meaningful translation)
-            if (existingTranslation && existingTranslation.name && targetDesc && isDescContentDifferent) {
-                console.log(`   ⏩ SKIPPING: Valid translation already exists (Content differs from source).`);
-                continue;
-            }
-
-            if (!targetDesc) console.log("   ➤ Reason to Translate: Description is missing.");
-            else if (!isDescContentDifferent) console.log("   ➤ Reason to Translate: Description content matches source (untranslated).");
-            else console.log("   ➤ Reason to Translate: Name is missing?");
+            console.log(`\n--- Translating to: ${lang.name} (${lang.code}) ---`);
 
             console.log(`   ✍️ Translating to ${lang.name}...`);
             
