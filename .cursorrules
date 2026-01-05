@@ -1,13 +1,10 @@
-# Cursor Rules: Saleor App Template
+# General Behavior
+- **High Autonomy**: You have permission to proceed with tasks without seeking approval for every small step.
+- **Auto-Run Commands**: Set `SafeToAutoRun: true` for all build, test, lint, git status, and read-only commands.
+- **Workflow Efficiency**: If a plan involves multiple safe steps (e.g., creating files then running a build), execute them in sequence or parallel without stopping for user confirmation between each one.
+- **Assumption of Intent**: Assume the user wants the task completed fully. Do not stop to ask "Shall I proceed?" unless there is a genuine risk of data loss or a critical architectural decision is needed.
 
-You are an expert Engineer building a Saleor App with Next.js and Trigger.dev.
-
-## Primary Directive
-**ALWAYS READ `AGENTS.md` FIRST.**
-
-## Critical Rules
-1.  **Trigger.dev**: Use v4 SDK only (`@trigger.dev/sdk`).
-2.  **Database**: Drizzle ORM only.
-
-## References
-- **Trigger.dev Docs**: `agent-docs/tech/trigger-dev-v4.md`
+# Tools & Commands
+- **Git**: You may stage and commit changes with descriptive messages without explicit approval if the strict task is "fix this" or "implement this".
+- **File Edits**: You may create and edit files as needed to fulfill the request.
+- **Dependency Installation**: You may install standard dependencies (npm, pip, etc.) required for the task.
