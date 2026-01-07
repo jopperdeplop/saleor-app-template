@@ -1,8 +1,10 @@
 import { task } from "@trigger.dev/sdk";
 import { 
   TARGET_LANGUAGES, 
-  translateText 
+  translateText,
+  getMetadataValue
 } from "@/lib/translation-utils";
+import { generateContentHash } from "@/lib/hash-utils";
 
 export const translateShippingMethod = task({
   id: "translate-shipping-method",
@@ -27,38 +29,47 @@ export const translateShippingMethod = task({
       return await res.json();
     };
 
-    // 1. Fetch Shipping Method
-    const res = await saleorFetch(`
-      query GetShippingMethod($id: ID!) {
-        shippingZone(id: "should-be-ignored-passed-in-payload-instead") {
-             # We can't fetch shipping method directly by ID in standard schema?
-             # ShippingMethod is usually accessed via ShippingZone or Node.
-             # Let's try Node interface if possible, or assume ID is valid for node(id: $id) { ... on ShippingMethodType }
-             # Using generic node query
-             id
-        }
-      } 
-    `, {});
-    
-    // Better query:
-    const nodeRes = await saleorFetch(`
-        query GetShippingMethod($id: ID!) {
-            shippingMethod(id: $id) {
-                id
-                name
-                description
-                privateMetadata { key value }
+    // Fetch via translation query since root shippingMethod query might be missing or restricted
+    const transRes = await saleorFetch(`
+        query GetShippingMethodTranslatable($id: ID!) {
+            translation(id: $id, kind: SHIPPING_METHOD) {
+                ... on ShippingMethodTranslatableContent {
+                    name
+                    description
+                    shippingMethod {
+                        id
+                        privateMetadata { key value }
+                    }
+                }
             }
         }
     `, { id: payload.shippingMethodId });
 
-    const sm = nodeRes.data?.shippingMethod;
-    if (!sm) {
+    const content = transRes.data?.translation;
+    
+    if (!content) {
         console.error(`Shipping method not found: ${payload.shippingMethodId}`);
         return;
     }
 
-    // 2. Translate
+    const sm = {
+        id: content.shippingMethod?.id || payload.shippingMethodId,
+        name: content.name,
+        description: content.description,
+        privateMetadata: content.shippingMethod?.privateMetadata || []
+    };
+
+    // Hash check
+    const currentFields = { name: sm.name, description: sm.description };
+    const newHash = generateContentHash(currentFields);
+    const oldHash = getMetadataValue(sm.privateMetadata, "translation_hash_v1");
+
+    if (newHash === oldHash) {
+      console.log(`✅ [Hash Match] Shipping Method "${sm.name}" skipped.`);
+      return { skipped: true };
+    }
+
+    // Translate
     for (const lang of TARGET_LANGUAGES) {
       const translatedName = await translateText(sm.name, lang.name, geminiKey);
       const translatedDesc = await translateText(sm.description, lang.name, geminiKey, { isJson: true });
@@ -76,8 +87,18 @@ export const translateShippingMethod = task({
       });
     }
 
-    // 3. Update Hash (optional, but good for consistency)
-    // For now simple implementation without hash check to just get it working
+    // Update Hash
+    await saleorFetch(`
+      mutation UpdateShippingMethodHash($id: ID!, $input: [MetadataInput!]!) {
+        updatePrivateMetadata(id: $id, input: $input) {
+          errors { field message }
+        }
+      }
+    `, {
+      id: sm.id,
+      input: [{ key: "translation_hash_v1", value: newHash }]
+    });
+
     return { success: true };
   }
 });

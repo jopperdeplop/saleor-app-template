@@ -75,7 +75,7 @@ export const translateCategory = task({
         translateText(category.seoDescription || "", lang.name, geminiKey, { maxLength: 300 }),
       ]);
 
-      const updateRes = await saleorFetch(`
+      await saleorFetch(`
         mutation UpdateCategoryTranslation($id: ID!, $lang: LanguageCodeEnum!, $input: TranslationInput!) {
           categoryTranslate(id: $id, languageCode: $lang, input: $input) {
             errors { field message }
@@ -86,14 +86,6 @@ export const translateCategory = task({
         lang: lang.code,
         input: { name, description, seoTitle, seoDescription }
       });
-
-      if (updateRes.data?.categoryTranslate?.errors?.length > 0) {
-        console.error(`   ❌ Failed to translate ${lang.name}:`, updateRes.data.categoryTranslate.errors);
-      } else if (updateRes.errors) {
-        console.error(`   ❌ API Error for ${lang.name}:`, updateRes.errors);
-      } else {
-         console.log(`   ✅ Translated to ${lang.name}`);
-      }
     }
 
     // 4. Update Hash

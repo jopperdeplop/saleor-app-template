@@ -74,7 +74,7 @@ export const translatePage = task({
       ]);
 
       await saleorFetch(`
-        mutation UpdatePageTranslation($id: ID!, $lang: LanguageCodeEnum!, $input: TranslationInput!) {
+        mutation UpdatePageTranslation($id: ID!, $lang: LanguageCodeEnum!, $input: PageTranslationInput!) {
           pageTranslate(id: $id, languageCode: $lang, input: $input) {
             errors { field message }
           }
