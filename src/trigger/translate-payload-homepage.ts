@@ -111,7 +111,11 @@ export const translatePayloadHomepage = task({
     }
 
     // 1. Fetch English homepage
-    const res = await fetch(`${apiUrl}/api/homepage?locale=en&depth=0`);
+    const res = await fetch(`${apiUrl}/api/homepage?locale=en&depth=0`, {
+      headers: {
+        "Authorization": `users API-Key ${apiToken}`,
+      },
+    });
     if (!res.ok) {
       throw new Error(`Failed to fetch homepage: ${res.status}`);
     }
@@ -158,7 +162,7 @@ export const translatePayloadHomepage = task({
       const patchRes = await fetch(`${apiUrl}/api/homepage/${homepage.id}?locale=${payloadLocale}`, {
         method: "PATCH",
         headers: {
-          "Authorization": `Bearer ${apiToken}`,
+          "Authorization": `users API-Key ${apiToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -178,7 +182,7 @@ export const translatePayloadHomepage = task({
     await fetch(`${apiUrl}/api/homepage/${homepage.id}`, {
       method: "PATCH",
       headers: {
-        "Authorization": `Bearer ${apiToken}`,
+        "Authorization": `users API-Key ${apiToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ translationHash: newHash }),

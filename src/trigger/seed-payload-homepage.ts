@@ -118,11 +118,26 @@ export const seedPayloadHomepage = task({
       },
     };
 
+    // Check if homepage already exists
+    const checkRes = await fetch(`${apiUrl}/api/homepage?depth=0`, {
+      headers: {
+        "Authorization": `users API-Key ${apiToken}`,
+      },
+    });
+
+    if (checkRes.ok) {
+      const existing = await checkRes.json();
+      if ((existing.docs && existing.docs.length > 0) || existing.totalDocs > 0) {
+        console.log("✅ Homepage already exists, skipping seed.");
+        return { success: true, skipped: true, homepageId: existing.docs[0].id };
+      }
+    }
+
     // Create homepage document
     const response = await fetch(`${apiUrl}/api/homepage`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiToken}`,
+        "Authorization": `users API-Key ${apiToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(homepageData),
