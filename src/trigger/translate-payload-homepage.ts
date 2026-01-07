@@ -29,7 +29,8 @@ interface PayloadHomepage {
 }
 
 async function translateBlock(block: PayloadBlock, langName: string, geminiKey: string): Promise<PayloadBlock> {
-  const translated = { ...block };
+  const { id, ...rest } = block;
+  const translated = { ...rest };
 
   // Hero block
   if (block.blockType === "hero") {
@@ -57,7 +58,7 @@ async function translateBlock(block: PayloadBlock, langName: string, geminiKey: 
     if (block.newStandardHeading) translated.newStandardHeading = await translateText(block.newStandardHeading as string, langName, geminiKey);
     if (Array.isArray(block.features)) {
       translated.features = await Promise.all(
-        (block.features as Array<{ icon?: string; title?: string; text?: string }>).map(async (f) => ({
+        (block.features as Array<{ id?: string; icon?: string; title?: string; text?: string }>).map(async (f) => ({
           icon: f.icon,
           title: f.title ? await translateText(f.title, langName, geminiKey) : undefined,
           text: f.text ? await translateText(f.text, langName, geminiKey) : undefined,
@@ -85,12 +86,15 @@ async function translateBlock(block: PayloadBlock, langName: string, geminiKey: 
     if (block.scrollHint) translated.scrollHint = await translateText(block.scrollHint as string, langName, geminiKey);
     if (Array.isArray(block.cards)) {
       translated.cards = await Promise.all(
-        (block.cards as Array<{ title?: string; subtitle?: string; ctaLabel?: string; imageUrl?: string; linkUrl?: string }>).map(async (card) => ({
-          ...card,
-          title: card.title ? await translateText(card.title, langName, geminiKey) : undefined,
-          subtitle: card.subtitle ? await translateText(card.subtitle, langName, geminiKey) : undefined,
-          ctaLabel: card.ctaLabel ? await translateText(card.ctaLabel, langName, geminiKey) : undefined,
-        }))
+        (block.cards as Array<{ id?: string; title?: string; subtitle?: string; ctaLabel?: string; imageUrl?: string; linkUrl?: string }>).map(async (card) => {
+          const { id: cardId, ...cardRest } = card;
+          return {
+            ...cardRest,
+            title: card.title ? await translateText(card.title, langName, geminiKey) : undefined,
+            subtitle: card.subtitle ? await translateText(card.subtitle, langName, geminiKey) : undefined,
+            ctaLabel: card.ctaLabel ? await translateText(card.ctaLabel, langName, geminiKey) : undefined,
+          };
+        })
       );
     }
   }
