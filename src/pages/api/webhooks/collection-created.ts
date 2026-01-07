@@ -42,6 +42,14 @@ export default collectionCreatedWebhook.createHandler(async (req, res, ctx) => {
     body: JSON.stringify(data),
   });
 
+  // --- 🌍 TRANSLATION AUTOMATION ---
+  try {
+    const { translateCollection } = await import("@/trigger/translate-collection");
+    await translateCollection.trigger({ collectionId: coll.id });
+  } catch (e) {
+    console.error("   ⚠️ Failed to trigger translation:", e);
+  }
+
   return res.status(200).json({ success: true });
 });
 

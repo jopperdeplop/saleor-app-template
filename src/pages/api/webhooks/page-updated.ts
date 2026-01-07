@@ -53,6 +53,15 @@ export default pageUpdatedWebhook.createHandler(async (req, res, ctx) => {
     });
   }
 
+  // --- 🌍 TRANSLATION AUTOMATION ---
+  try {
+    const { translatePage } = await import("@/trigger/translate-page");
+    await translatePage.trigger({ pageId: page.id });
+    console.log(`   📤 Translation task triggered for page: ${page.id}`);
+  } catch (e) {
+    console.error("   ⚠️ Failed to trigger translation:", e);
+  }
+
   return res.status(200).json({ success: true });
 });
 

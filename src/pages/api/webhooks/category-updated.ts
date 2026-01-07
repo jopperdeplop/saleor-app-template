@@ -110,6 +110,15 @@ export default categoryUpdatedWebhook.createHandler(async (req, res, ctx) => {
     });
   }
 
+  // --- 🌍 TRANSLATION AUTOMATION ---
+  try {
+    const { translateCategory } = await import("@/trigger/translate-category");
+    await translateCategory.trigger({ categoryId: category.id });
+    console.log(`   📤 Translation task triggered for category: ${category.id}`);
+  } catch (e) {
+    console.error("   ⚠️ Failed to trigger translation:", e);
+  }
+
   return res.status(200).json({ success: true });
 });
 

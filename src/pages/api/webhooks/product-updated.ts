@@ -127,6 +127,16 @@ export default productUpdatedWebhook.createHandler(async (req, res, ctx) => {
     }
 
     console.log("   ✅ Product variants sync successful");
+
+    // --- 🌍 TRANSLATION AUTOMATION ---
+    try {
+      const { translateProduct } = await import("@/trigger/translate-product");
+      await translateProduct.trigger({ productId: product.id });
+      console.log(`   📤 Translation task triggered for product: ${product.id}`);
+    } catch (e) {
+      console.error("   ⚠️ Failed to trigger translation:", e);
+    }
+
     return res.status(200).json({ success: true });
 
   } catch (error) {

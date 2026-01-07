@@ -83,6 +83,7 @@ export default createManifestHandler({
         "MANAGE_SHIPPING",
         "MANAGE_PRODUCTS",
         "MANAGE_PAGES",
+        "MANAGE_TRANSLATIONS",
       ],
       id: "saleor.app",
       version: packageJson.version,

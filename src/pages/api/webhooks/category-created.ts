@@ -46,6 +46,14 @@ export default categoryCreatedWebhook.createHandler(async (req, res, ctx) => {
     body: JSON.stringify(data),
   });
 
+  // --- 🌍 TRANSLATION AUTOMATION ---
+  try {
+    const { translateCategory } = await import("@/trigger/translate-category");
+    await translateCategory.trigger({ categoryId: category.id });
+  } catch (e) {
+    console.error("   ⚠️ Failed to trigger translation:", e);
+  }
+
   return res.status(200).json({ success: true });
 });
 
