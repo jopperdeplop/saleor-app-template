@@ -8,6 +8,7 @@ import { generateContentHash } from "@/lib/hash-utils";
 
 export const translatePage = task({
   id: "translate-page",
+  queue: { concurrencyLimit: 5 },
   run: async (payload: { pageId: string }) => {
     const apiUrl = process.env.SALEOR_API_URL;
     const geminiKey = process.env.GOOGLE_API_KEY;
@@ -68,8 +69,8 @@ export const translatePage = task({
       const [title, content, seoTitle, seoDescription] = await Promise.all([
         translateText(page.title, lang.name, geminiKey),
         translateText(page.content, lang.name, geminiKey, { isJson: true }),
-        translateText(page.seoTitle || page.title, lang.name, geminiKey),
-        translateText(page.seoDescription || "", lang.name, geminiKey),
+        translateText(page.seoTitle || page.title, lang.name, geminiKey, { maxLength: 70 }),
+        translateText(page.seoDescription || "", lang.name, geminiKey, { maxLength: 300 }),
       ]);
 
       await saleorFetch(`

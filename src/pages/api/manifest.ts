@@ -18,6 +18,13 @@ import { collectionDeletedWebhook } from "./webhooks/collection-deleted";
 import { pageCreatedWebhook } from "./webhooks/page-created";
 import { pageUpdatedWebhook } from "./webhooks/page-updated";
 import { pageDeletedWebhook } from "./webhooks/page-deleted";
+import { productCreatedWebhook } from "./webhooks/product-created";
+import { attributeCreatedWebhook } from "./webhooks/attribute-created";
+import { attributeUpdatedWebhook } from "./webhooks/attribute-updated";
+import { shippingPriceCreatedWebhook } from "./webhooks/shipping-price-created";
+import { shippingPriceUpdatedWebhook } from "./webhooks/shipping-price-updated";
+import { menuItemCreatedWebhook } from "./webhooks/menu-item-created";
+import { menuItemUpdatedWebhook } from "./webhooks/menu-item-updated";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -84,6 +91,8 @@ export default createManifestHandler({
         "MANAGE_PRODUCTS",
         "MANAGE_PAGES",
         "MANAGE_TRANSLATIONS",
+        "MANAGE_MENUS", 
+        "MANAGE_PRODUCT_TYPES_AND_ATTRIBUTES",
       ],
       id: "saleor.app",
       version: packageJson.version,
@@ -102,6 +111,7 @@ export default createManifestHandler({
         productVariantUpdatedWebhook.getWebhookManifest(apiBaseURL),
         productVariantDeletedWebhook.getWebhookManifest(apiBaseURL),
         productUpdatedWebhook.getWebhookManifest(apiBaseURL),
+        productCreatedWebhook.getWebhookManifest(apiBaseURL), // NEW
         categoryCreatedWebhook.getWebhookManifest(apiBaseURL),
         categoryUpdatedWebhook.getWebhookManifest(apiBaseURL),
         categoryDeletedWebhook.getWebhookManifest(apiBaseURL),
@@ -111,6 +121,12 @@ export default createManifestHandler({
         pageCreatedWebhook.getWebhookManifest(apiBaseURL),
         pageUpdatedWebhook.getWebhookManifest(apiBaseURL),
         pageDeletedWebhook.getWebhookManifest(apiBaseURL),
+        attributeCreatedWebhook.getWebhookManifest(apiBaseURL), // NEW
+        attributeUpdatedWebhook.getWebhookManifest(apiBaseURL), // NEW
+        shippingPriceCreatedWebhook.getWebhookManifest(apiBaseURL), // NEW
+        shippingPriceUpdatedWebhook.getWebhookManifest(apiBaseURL), // NEW
+        menuItemCreatedWebhook.getWebhookManifest(apiBaseURL), // NEW
+        menuItemUpdatedWebhook.getWebhookManifest(apiBaseURL), // NEW
       ],
       /**
        * Optionally, extend Dashboard with custom UIs

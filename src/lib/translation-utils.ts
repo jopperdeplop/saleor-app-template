@@ -26,11 +26,12 @@ export async function translateText(
     text: string, 
     targetLanguage: string, 
     apiKey: string, 
-    options: { isJson?: boolean; context?: string } = {}
+    options: { isJson?: boolean; context?: string; maxLength?: number } = {}
 ): Promise<string> {
     if (!text || text === "{}" || text === '{"time":0,"blocks":[],"version":"2.25.0"}') return text;
 
-    const { isJson = false, context = "" } = options;
+    const { isJson = false, context = "", maxLength } = options;
+    const lengthInstruction = maxLength ? `Keep the translation under ${maxLength} characters.` : "";
 
     const prompt = isJson 
         ? `You are a professional e-commerce translator. 
@@ -41,7 +42,8 @@ export async function translateText(
            Return ONLY the translated JSON.
            
            Content: ${text}`
-        : `Translate the following e-commerce text into ${targetLanguage}. 
+        : `Translate the following e-commerce text into ${targetLanguage}.
+           ${lengthInstruction}
            Keep brand names and technical terms in their original form if commonly used in ${targetLanguage}.
            Context: ${context}
            Return ONLY the final translated string.
@@ -71,7 +73,31 @@ export async function translateText(
         }
 
         // Clean up markdown code blocks if Gemini wrapped them
-        return translated.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+        let clean = translated.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+
+        if (isJson) {
+            try {
+                // Validate JSON but don't enforce length on the whole JSON string
+                JSON.parse(clean); 
+            } catch (e) {
+                console.warn(`⚠️ Invalid JSON received from Gemini for ${targetLanguage}. Fallback to original.`);
+                return text;
+            }
+        } else if (maxLength && clean.length > maxLength) {
+            // Hard truncate to ensure we never exceed the limit
+            // Try to cut at the last space to be polite
+            const truncated = clean.substring(0, maxLength);
+            const lastSpace = truncated.lastIndexOf(" ");
+            
+            // If there's a space in the last 20% of the string, cut there. Otherwise hard cut.
+            if (lastSpace > maxLength * 0.8) {
+                clean = truncated.substring(0, lastSpace).trim();
+            } else {
+                clean = truncated.trim();
+            }
+        }
+
+        return clean;
     } catch (e) {
         console.error(`❌ Translation error for ${targetLanguage}:`, e);
         return text;

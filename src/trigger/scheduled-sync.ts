@@ -23,66 +23,99 @@ export const dailyTranslationSync = schedules.task({
       return await res.json();
     };
 
-    // 1. Sync Products (example: first 50)
-    const productRes = await saleorFetch(`
-      query GetIncompleteProducts {
-        products(first: 50) {
-          edges {
-            node {
-              id
-              translations { language { code } }
-              privateMetadata { key value }
-            }
-          }
-        }
-      }
-    `);
-
-    for (const edge of productRes.data?.products?.edges || []) {
-      const node = edge.node;
-      const hasHash = node.privateMetadata.some((m: any) => m.key === "translation_hash_v1");
-      const isMissingTranslations = node.translations.length < 15;
+    // Pagination Helper
+    async function exampleScan(
+      queryName: string, 
+      queryBody: string, 
+      rootField: string, 
+      callback: (node: any) => Promise<void>
+    ) {
+      let hasNextPage = true;
+      let after = null;
       
-      if (!hasHash || isMissingTranslations) {
-        await translateProduct.trigger({ productId: node.id });
-      }
-    }
+      console.log(`🔎 Starting scan for ${rootField}...`);
 
-    // 2. Sync Categories
-    const categoryRes = await saleorFetch(`
-      query GetCategories {
-        categories(first: 50) {
-          edges {
-            node {
-              id
-              privateMetadata { key value }
+      while (hasNextPage) {
+        const query = `
+          query ${queryName}($after: String) {
+            ${rootField}(first: 50, after: $after) {
+              edges { node { ${queryBody} } }
+              pageInfo { hasNextPage endCursor }
             }
           }
+        `;
+        const res = await saleorFetch(query, { after });
+        const data = res.data?.[rootField];
+        
+        if (!data) break;
+
+        for (const edge of data.edges || []) {
+           await callback(edge.node);
+        }
+
+        hasNextPage = data.pageInfo?.hasNextPage;
+        after = data.pageInfo?.endCursor;
+      }
+      console.log(`✅ Completed scan for ${rootField}.`);
+    }
+
+    // 1. Products
+    await exampleScan(
+      "ScanProducts",
+      "id privateMetadata { key value } translations { language { code } }",
+      "products",
+      async (node) => {
+        const hasHash = node.privateMetadata.some((m: any) => m.key === "translation_hash_v1");
+        // Always trigger if missing translations, or if hash missing.
+        // Even if hash checks out, triggering it allows the child task to verify content integrity.
+        // We log 'Queuing' here.
+        if (!hasHash || node.translations.length < 15) {
+             console.log(`   Queuing Product: ${node.id}`);
+             await translateProduct.trigger({ productId: node.id });
         }
       }
-    `);
+    );
 
-    for (const edge of categoryRes.data?.categories?.edges || []) {
-       await translateCategory.trigger({ categoryId: edge.node.id });
-    }
+    // 2. Categories
+    await exampleScan("ScanCategories", "id", "categories", async (node) => {
+        await translateCategory.trigger({ categoryId: node.id });
+    });
 
-    // Repeat for Collections and Pages...
-    const collectionRes = await saleorFetch(`query{ collections(first:50){ edges{node{id}} } }`);
-    for (const edge of collectionRes.data?.collections?.edges || []) {
-       await translateCollection.trigger({ collectionId: edge.node.id });
-    }
-    
-    const pageRes = await saleorFetch(`query{ pages(first:50){ edges{node{id}} } }`);
-    for (const edge of pageRes.data?.pages?.edges || []) {
-       await translatePage.trigger({ pageId: edge.node.id });
-    }
+    // 3. Collections
+    await exampleScan("ScanCollections", "id", "collections", async (node) => {
+        await translateCollection.trigger({ collectionId: node.id });
+    });
 
-    // 3. Sync Attributes
+    // 4. Pages (Models)
+    await exampleScan("ScanPages", "id", "pages", async (node) => {
+        await translatePage.trigger({ pageId: node.id });
+    });
+
+    // 5. Attributes
     const { translateAttribute } = await import("./translate-attribute");
-    const attrRes = await saleorFetch(`query{ attributes(first:100){ edges{node{id}} } }`);
-    for (const edge of attrRes.data?.attributes?.edges || []) {
-       await translateAttribute.trigger({ attributeId: edge.node.id });
-    }
+    await exampleScan("ScanAttributes", "id", "attributes", async (node) => {
+        await translateAttribute.trigger({ attributeId: node.id });
+    });
+    
+    // 6. Shipping Methods (via Shipping Zones)
+    const { translateShippingMethod } = await import("./translate-shipping-method");
+    await exampleScan("ScanShippingZones", "shippingMethods { id }", "shippingZones", async (node) => {
+        for (const method of node.shippingMethods || []) {
+            await translateShippingMethod.trigger({ shippingMethodId: method.id });
+        }
+    });
+
+    // 7. Menu Items (via Menus)
+    const { translateMenuItem } = await import("./translate-menu-item");
+    await exampleScan("ScanMenus", "items { id children { id children { id } } }", "menus", async (node) => {
+        const traverse = async (items: any[]) => {
+            for (const item of items) {
+                await translateMenuItem.trigger({ menuItemId: item.id });
+                if (item.children) await traverse(item.children);
+            }
+        };
+        if (node.items) await traverse(node.items);
+    });
 
     return { status: "Sync tasks queued" };
   }

@@ -6,6 +6,7 @@ import {
 
 export const translateAttribute = task({
   id: "translate-attribute",
+  queue: { concurrencyLimit: 5 },
   run: async (payload: { attributeId: string }) => {
     const apiUrl = process.env.SALEOR_API_URL;
     const geminiKey = process.env.GOOGLE_API_KEY;
