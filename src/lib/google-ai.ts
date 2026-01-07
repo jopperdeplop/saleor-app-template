@@ -8,7 +8,7 @@ if (!API_KEY && process.env.NODE_ENV !== "test") {
 
 const genAI = new GoogleGenerativeAI(API_KEY || "");
 // using model from shopify-product-lifecycle.ts as requested
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-09-2025" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
 export interface CategorySuggestion {
   categoryName: string;
