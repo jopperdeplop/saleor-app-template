@@ -14,18 +14,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // const secret = req.headers["x-payload-secret"];
   // if (secret !== process.env.PAYLOAD_WEBHOOK_SECRET) { ... }
 
-  const { collection, operation, doc } = req.body;
+  if (!req.body) {
+    return res.status(400).json({ error: "No body received" });
+  }
+
+  const { collection, operation } = req.body;
 
   // Only trigger for Homepage updates
   if (collection === "homepage" && (operation === "update" || operation === "create")) {
     console.log("🚀 Payload Homepage updated, triggering translation task...");
     
     try {
-      await translatePayloadHomepage.trigger({});
+      // Trigger the task without a payload since it doesn't require one
+      await translatePayloadHomepage.trigger();
       return res.status(200).json({ message: "Translation task triggered" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to trigger translation:", error);
-      return res.status(500).json({ error: "Failed to trigger translation" });
+      return res.status(500).json({ error: "Failed to trigger translation", details: error.message });
     }
   }
 
