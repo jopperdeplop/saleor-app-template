@@ -11,7 +11,7 @@ async function discoverSlug(brandName: string) {
 	if (!brandName) return null;
     const query = `
         query FindBrandPage($name: String!) {
-            pages(filter: { search: $name }, first: 10) {
+            pages(first: 100) {
                 edges {
                     node {
                         slug
@@ -36,18 +36,23 @@ async function discoverSlug(brandName: string) {
 		}
 
 		const pages = json.data?.pages?.edges || [];
-		console.log(`[DiscoverSlug] Found ${pages.length} potential matches.`);
+		console.log(`[DiscoverSlug] Total pages found in Saleor: ${pages.length}`);
+		
+        // Log all titles for debugging
+        pages.forEach((p: any) => console.log(`   - Existing Page: "${p.node.title}" (slug: ${p.node.slug})`));
+
 		// Find exact title match or fallback to first search result
 		const match = pages.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase());
-		const slug = match?.node?.slug || (pages[0]?.node?.slug);
+		const slug = match?.node?.slug;
+
 		if (slug) {
-			console.log(`[DiscoverSlug] SUCCESS: Resolved to slug "${slug}" (Match Type: ${match ? 'Exact' : 'Fuzzy/Fallback'})`);
+			console.log(`[DiscoverSlug] SUCCESS: Matched "${brandName}" to slug "${slug}"`);
 		} else {
-			console.log(`[DiscoverSlug] FAILURE: No pages found matching "${brandName}"`);
+			console.log(`[DiscoverSlug] FAILURE: Could not find exact match for "${brandName}" in the list above.`);
 		}
 		return slug;
 	} catch (e) {
-		console.error(`[DiscoverSlug] CRITICAL ERROR for ${brandName}:`, e);
+		console.error(`[DiscoverSlug] CRITICAL ERROR:`, e);
 		return null;
 	}
 }
