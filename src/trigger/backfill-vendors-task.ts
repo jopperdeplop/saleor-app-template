@@ -12,35 +12,24 @@ import { geocodeVendorAddress } from "./geocode-vendor";
 export const backfillAllVendors = task({
 	id: "backfill-all-vendors",
 	run: async () => {
-		console.log("----------------------------------------------------------");
-		console.log("STARTING BULK VENDOR BACKFILL");
-		console.log("----------------------------------------------------------");
-		console.log("🔍 Querying database for all vendors...");
+		console.log("🔍 Fetching all vendors for production backfill...");
 
 		const vendors = await db.select().from(users).where(eq(users.role, "vendor"));
 
-		console.log(`✅ Database Fetch Complete: Found ${vendors.length} vendors.`);
+		console.log(`Found ${vendors.length} vendors to process.`);
 
 		let triggeredCount = 0;
 		for (const vendor of vendors) {
-			const brand = vendor.brandName || vendor.brand || "Unknown Brand";
-			console.log(`[${triggeredCount + 1}/${vendors.length}] 🚀 Queuing: ${brand} (ID: ${vendor.id})`);
+			console.log(`🚀 Triggering geocoding for: ${vendor.brandName || vendor.brand} (ID: ${vendor.id})`);
 			
-			try {
-				await geocodeVendorAddress.trigger({ userId: vendor.id });
-				triggeredCount++;
-			} catch (err) {
-				console.error(`❌ Failed to queue ${brand}:`, err);
-			}
+            // We use trigger to run them in parallel/background
+			await geocodeVendorAddress.trigger({ userId: vendor.id });
+			triggeredCount++;
 		}
-
-		console.log("----------------------------------------------------------");
-		console.log(`COMPLETED: ${triggeredCount} tasks triggered successfully.`);
-		console.log("----------------------------------------------------------");
 
 		return {
 			success: true,
-			vendorsFound: vendors.length,
+			vendorsProcessed: vendors.length,
 			tasksTriggered: triggeredCount,
 		};
 	},
