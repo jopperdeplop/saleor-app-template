@@ -25,6 +25,7 @@ interface PayloadHomepage {
   seo?: {
     metaTitle?: string;
     metaDescription?: string;
+    ogImage?: string;
   };
 }
 
@@ -160,6 +161,7 @@ export const translatePayloadHomepage = task({
       const translatedSeo = homepage.seo ? {
         metaTitle: homepage.seo.metaTitle ? await translateText(homepage.seo.metaTitle, lang.name, geminiKey, { maxLength: 70 }) : undefined,
         metaDescription: homepage.seo.metaDescription ? await translateText(homepage.seo.metaDescription, lang.name, geminiKey, { maxLength: 160 }) : undefined,
+        ogImage: homepage.seo.ogImage, // Standard field (not localized usually, or copied)
       } : undefined;
 
       // PATCH to Payload

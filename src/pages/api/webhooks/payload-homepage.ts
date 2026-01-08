@@ -26,6 +26,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     try {
       // Trigger the task without a payload since it doesn't require one
+      console.log("   --- Webhook Payload Detail ---");
+      console.log(`   Collection: ${collection}`);
+      console.log(`   Operation: ${operation}`);
+      console.log("   -----------------------------");
+
       await translatePayloadHomepage.trigger();
       return res.status(200).json({ message: "Translation task triggered" });
     } catch (error: any) {
