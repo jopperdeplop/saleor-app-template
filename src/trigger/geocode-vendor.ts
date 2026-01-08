@@ -94,28 +94,39 @@ export const geocodeVendorAddress = task({
     const result = await geocodeAddress(address);
 
     if (result) {
-      console.log(`Successfully geocoded: ${result.latitude}, ${result.longitude}`);
+      console.log(`[Geocode] Successfully resolved: ${result.latitude}, ${result.longitude}`);
       
       // 5. Update coordinates and slug in DB
-      await db.update(users)
-        .set({
-          latitude: result.latitude,
-          longitude: result.longitude,
-          geocodedAt: new Date(),
-          saleorPageSlug: discoveredSlug,
-          // Backfill structured columns if they were missing but used for geocoding
-          street: user.street || address.street,
-          city: user.city || address.city,
-          postalCode: user.postalCode || address.postalCode,
-          countryCode: user.countryCode || address.country
-        })
-        .where(eq(users.id, payload.userId));
+      const updatePayload = {
+        latitude: result.latitude,
+        longitude: result.longitude,
+        geocodedAt: new Date(),
+        saleorPageSlug: discoveredSlug,
+        // Backfill structured columns if they were missing but used for geocoding
+        street: user.street || address.street,
+        city: user.city || address.city,
+        postalCode: user.postalCode || address.postalCode,
+        countryCode: user.countryCode || address.country
+      };
+
+      console.log("----------------------------------------------------------");
+      console.log(`[DB-UPDATE] Payload for User ID ${payload.userId}:`);
+      console.log(JSON.stringify(updatePayload, null, 2));
+      console.log("----------------------------------------------------------");
+
+      const updateResult = await db.update(users)
+        .set(updatePayload)
+        .where(eq(users.id, payload.userId))
+        .returning();
+
+      console.log(`✅ [DB-UPDATE] SUCCESS: Updated ${updateResult[0]?.brandName || updateResult[0]?.brand || user.brand}`);
 
       return { 
         success: true, 
         latitude: result.latitude, 
         longitude: result.longitude,
-        slug: discoveredSlug
+        slug: discoveredSlug,
+        updatedRecord: updateResult[0]
       };
     }
 
