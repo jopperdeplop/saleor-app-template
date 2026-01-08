@@ -4,10 +4,11 @@ import { users } from "../db/schema";
 import { geocodeAddress } from "../lib/geocoding";
 import { eq } from "drizzle-orm";
 
-const SALEOR_API_URL = process.env.NEXT_PUBLIC_SALEOR_API_URL || 'https://api.salp.shop/graphql/';
+const SALEOR_API_URL = process.env.SALEOR_API_URL || process.env.NEXT_PUBLIC_SALEOR_API_URL || 'https://api.salp.shop/graphql/';
 
 async function discoverSlug(brandName: string) {
-    if (!brandName) return null;
+	console.log(`[DiscoverSlug] Searching for brand: "${brandName}"...`);
+	if (!brandName) return null;
     const query = `
         query FindBrandPage($name: String!) {
             pages(filter: { search: $name }, first: 10) {
@@ -28,14 +29,21 @@ async function discoverSlug(brandName: string) {
             body: JSON.stringify({ query, variables: { name: brandName } })
         });
         const json = await res.json();
-        const pages = json.data?.pages?.edges || [];
-        // Find exact title match or fallback to first search result
-        const match = pages.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase());
-        return match?.node?.slug || (pages[0]?.node?.slug);
-    } catch (e) {
-        console.error(`Failed to discover slug for ${brandName}:`, e);
-        return null;
-    }
+		const pages = json.data?.pages?.edges || [];
+		console.log(`[DiscoverSlug] Found ${pages.length} potential matches.`);
+		// Find exact title match or fallback to first search result
+		const match = pages.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase());
+		const slug = match?.node?.slug || (pages[0]?.node?.slug);
+		if (slug) {
+			console.log(`[DiscoverSlug] Successfully resolved slug: "${slug}"`);
+		} else {
+			console.log(`[DiscoverSlug] No slug found for "${brandName}"`);
+		}
+		return slug;
+	} catch (e) {
+		console.error(`[DiscoverSlug] ERROR for ${brandName}:`, e);
+		return null;
+	}
 }
 
 export const geocodeVendorAddress = task({
