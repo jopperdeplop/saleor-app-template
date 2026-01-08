@@ -29,19 +29,25 @@ async function discoverSlug(brandName: string) {
             body: JSON.stringify({ query, variables: { name: brandName } })
         });
         const json = await res.json();
+		console.log(`[DiscoverSlug] Raw Saleor Response for "${brandName}":`, JSON.stringify(json, null, 2));
+		
+		if (json.errors) {
+			console.error(`[DiscoverSlug] GraphQL Errors:`, JSON.stringify(json.errors, null, 2));
+		}
+
 		const pages = json.data?.pages?.edges || [];
 		console.log(`[DiscoverSlug] Found ${pages.length} potential matches.`);
 		// Find exact title match or fallback to first search result
 		const match = pages.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase());
 		const slug = match?.node?.slug || (pages[0]?.node?.slug);
 		if (slug) {
-			console.log(`[DiscoverSlug] Successfully resolved slug: "${slug}"`);
+			console.log(`[DiscoverSlug] SUCCESS: Resolved to slug "${slug}" (Match Type: ${match ? 'Exact' : 'Fuzzy/Fallback'})`);
 		} else {
-			console.log(`[DiscoverSlug] No slug found for "${brandName}"`);
+			console.log(`[DiscoverSlug] FAILURE: No pages found matching "${brandName}"`);
 		}
 		return slug;
 	} catch (e) {
-		console.error(`[DiscoverSlug] ERROR for ${brandName}:`, e);
+		console.error(`[DiscoverSlug] CRITICAL ERROR for ${brandName}:`, e);
 		return null;
 	}
 }
@@ -90,11 +96,11 @@ export const geocodeVendorAddress = task({
     }
 
     // 4. Geocode
-    console.log(`Geocoding address for user ${payload.userId}: ${address.city}, ${address.country}`);
+    console.log(`[Geocode] Attempting resolution for: ${address.city}, ${address.country}`);
     const result = await geocodeAddress(address);
 
     if (result) {
-      console.log(`[Geocode] Successfully resolved: ${result.latitude}, ${result.longitude}`);
+      console.log(`[Geocode] SUCCESS: ${result.latitude}, ${result.longitude}`);
       
       // 5. Update coordinates and slug in DB
       const updatePayload = {
