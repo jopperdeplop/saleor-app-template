@@ -4,6 +4,40 @@ import { users } from "../db/schema";
 import { geocodeAddress } from "../lib/geocoding";
 import { eq } from "drizzle-orm";
 
+const SALEOR_API_URL = process.env.NEXT_PUBLIC_SALEOR_API_URL || 'https://api.salp.shop/graphql/';
+
+async function discoverSlug(brandName: string) {
+    if (!brandName) return null;
+    const query = `
+        query FindBrandPage($name: String!) {
+            pages(filter: { search: $name }, first: 10) {
+                edges {
+                    node {
+                        slug
+                        title
+                    }
+                }
+            }
+        }
+    `;
+    
+    try {
+        const res = await fetch(SALEOR_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, variables: { name: brandName } })
+        });
+        const json = await res.json();
+        const pages = json.data?.pages?.edges || [];
+        // Find exact title match or fallback to first search result
+        const match = pages.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase());
+        return match?.node?.slug || (pages[0]?.node?.slug);
+    } catch (e) {
+        console.error(`Failed to discover slug for ${brandName}:`, e);
+        return null;
+    }
+}
+
 export const geocodeVendorAddress = task({
   id: "geocode-vendor-address",
   run: async (payload: { userId: number }) => {
@@ -20,7 +54,17 @@ export const geocodeVendorAddress = task({
         return { success: false, error: "User not found" };
     }
 
-    // 2. Prepare address for geocoding
+    // 2. Discover Slug if missing
+    let discoveredSlug = user.saleorPageSlug;
+    if (!discoveredSlug) {
+        console.log(`Attempting to discover slug for brand: ${user.brandName || user.brand}`);
+        discoveredSlug = await discoverSlug(user.brandName || user.brand);
+        if (discoveredSlug) {
+            console.log(`Discovered slug: ${discoveredSlug}`);
+        }
+    }
+
+    // 3. Prepare address for geocoding
     const address = {
       street: user.street || (user.warehouseAddress as any)?.street || "",
       city: user.city || (user.warehouseAddress as any)?.city || "",
@@ -29,23 +73,28 @@ export const geocodeVendorAddress = task({
     };
 
     if (!address.city || !address.country) {
+        // Even if geocoding fails, we might have discovered the slug
+        if (discoveredSlug && discoveredSlug !== user.saleorPageSlug) {
+            await db.update(users).set({ saleorPageSlug: discoveredSlug }).where(eq(users.id, payload.userId));
+        }
         console.warn(`Insufficient address data for user ${payload.userId}.`);
-        return { success: false, error: "Insufficient address data" };
+        return { success: !!discoveredSlug, error: "Insufficient address data" };
     }
 
-    // 3. Geocode (The logic in geocodeAddress already handles the 1s delay policy via retries)
+    // 4. Geocode
     console.log(`Geocoding address for user ${payload.userId}: ${address.city}, ${address.country}`);
     const result = await geocodeAddress(address);
 
     if (result) {
       console.log(`Successfully geocoded: ${result.latitude}, ${result.longitude}`);
       
-      // 4. Update coordinates in DB
+      // 5. Update coordinates and slug in DB
       await db.update(users)
         .set({
           latitude: result.latitude,
           longitude: result.longitude,
           geocodedAt: new Date(),
+          saleorPageSlug: discoveredSlug,
           // Backfill structured columns if they were missing but used for geocoding
           street: user.street || address.street,
           city: user.city || address.city,
@@ -57,11 +106,17 @@ export const geocodeVendorAddress = task({
       return { 
         success: true, 
         latitude: result.latitude, 
-        longitude: result.longitude 
+        longitude: result.longitude,
+        slug: discoveredSlug
       };
     }
 
+    // Update slug even if geocoding fails
+    if (discoveredSlug && discoveredSlug !== user.saleorPageSlug) {
+        await db.update(users).set({ saleorPageSlug: discoveredSlug }).where(eq(users.id, payload.userId));
+    }
+
     console.error(`Geocoding failed for user ${payload.userId}.`);
-    return { success: false, error: "Geocoding failed" };
+    return { success: !!discoveredSlug, error: "Geocoding failed" };
   },
 });
