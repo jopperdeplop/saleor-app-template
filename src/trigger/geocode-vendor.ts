@@ -10,7 +10,7 @@ async function discoverSlug(brandName: string) {
 	console.log(`[DiscoverSlug] Searching for brand: "${brandName}"...`);
 	if (!brandName) return null;
     const query = `
-        query FindBrandPage($name: String!) {
+        query FindBrandPage {
             pages(first: 100) {
                 edges {
                     node {
