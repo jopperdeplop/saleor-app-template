@@ -5,47 +5,105 @@ import { geocodeAddress } from "../lib/geocoding";
 import { eq } from "drizzle-orm";
 
 const SALEOR_API_URL = process.env.SALEOR_API_URL || process.env.NEXT_PUBLIC_SALEOR_API_URL || 'https://api.salp.shop/graphql/';
+const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
+let SALEOR_TOKEN = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
+if (SALEOR_TOKEN && !SALEOR_TOKEN.startsWith('Bearer ')) {
+    SALEOR_TOKEN = `Bearer ${SALEOR_TOKEN}`;
+}
 
 /**
- * Discovers the Saleor page slug for a brand by searching all pages.
+ * Ensures a Brand Page exists in Saleor and returns its slug.
+ * If not found, creates a new one.
  */
-async function discoverSlug(brandName: string): Promise<string | null> {
-	if (!brandName) return null;
-    
-    const query = `
-        query FindBrandPage {
-            pages(first: 100) {
-                edges {
-                    node {
-                        slug
-                        title
+async function getOrCreateBrandPageSlug(brandName: string): Promise<string | null> {
+    if (!brandName || !SALEOR_TOKEN || !BRAND_MODEL_TYPE_ID) {
+        console.warn('Missing requirements for Brand Page creation:', { brandName, hasToken: !!SALEOR_TOKEN, hasTypeId: !!BRAND_MODEL_TYPE_ID });
+        return null;
+    }
+
+    const saleorFetch = async (query: string, variables: any = {}) => {
+        const res = await fetch(SALEOR_API_URL, {
+            method: 'POST',
+            headers: { 
+                'Authorization': SALEOR_TOKEN, 
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({ query, variables })
+        });
+        return await res.json();
+    };
+
+    try {
+        // 1. Check for existing page
+        const findRes = await saleorFetch(`
+            query FindBrandPage($search: String!) {
+                pages(filter: { search: $search }, first: 10) {
+                    edges {
+                        node {
+                            slug
+                            title
+                            isPublished
+                        }
                     }
                 }
             }
+        `, { search: brandName });
+
+        const existing = findRes.data?.pages?.edges?.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase())?.node;
+
+        if (existing) {
+            console.log(`Found existing Brand Page: ${existing.slug}`);
+            return existing.slug;
         }
-    `;
-    
-    try {
-        const res = await fetch(SALEOR_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query })
+
+        // 2. Create new page if not found
+        console.log(`Creating new Brand Page for: ${brandName}`);
+        const createRes = await saleorFetch(`
+            mutation CreateBrandPage($input: PageCreateInput!) {
+                pageCreate(input: $input) {
+                    page {
+                        id
+                        slug
+                    }
+                    errors {
+                        field
+                        message
+                    }
+                }
+            }
+        `, {
+            input: {
+                title: brandName,
+                pageType: BRAND_MODEL_TYPE_ID,
+                isPublished: true,
+                content: JSON.stringify({
+                    time: Date.now(),
+                    blocks: [{ type: "paragraph", data: { text: `Welcome to the official ${brandName} brand page.` } }],
+                    version: "2.25.0"
+                })
+            }
         });
-        const json = await res.json();
-		
-		const pages = json.data?.pages?.edges || [];
-		const match = pages.find((e: any) => e.node.title.toLowerCase() === brandName.toLowerCase());
-		
-		return match?.node?.slug || null;
-	} catch (e) {
-		console.error(`Failed to discover slug for ${brandName}:`, e);
-		return null;
-	}
+
+        const newPage = createRes.data?.pageCreate?.page;
+        if (newPage?.slug) {
+            console.log(`Successfully created Brand Page: ${newPage.slug}`);
+            return newPage.slug;
+        }
+
+        if (createRes.data?.pageCreate?.errors?.length > 0) {
+            console.error('Saleor errors creating brand page:', createRes.data.pageCreate.errors);
+        }
+
+        return null;
+    } catch (e) {
+        console.error(`Failed to get/create brand page for ${brandName}:`, e);
+        return null;
+    }
 }
 
 /**
  * Geocodes a vendor's address and updates their database record with coordinates.
- * Also attempts to discover and link the vendor's Saleor page slug.
+ * Also automates the creation of their Saleor brand page and links the slug.
  */
 export const geocodeVendorAddress = task({
   id: "geocode-vendor-address",
@@ -62,10 +120,10 @@ export const geocodeVendorAddress = task({
         return { success: false, error: "User not found" };
     }
 
-    // 2. Discover Slug if missing
-    let discoveredSlug = user.saleorPageSlug;
-    if (!discoveredSlug) {
-        discoveredSlug = await discoverSlug(user.brandName || user.brand);
+    // 2. Ensure Brand Page exists and get its slug
+    let linkedSlug = user.saleorPageSlug;
+    if (!linkedSlug) {
+        linkedSlug = await getOrCreateBrandPageSlug(user.brandName || user.brand);
     }
 
     // 3. Prepare address for geocoding
@@ -78,10 +136,10 @@ export const geocodeVendorAddress = task({
 
     if (!address.city || !address.country) {
         // Update slug even if geocoding can't proceed
-        if (discoveredSlug && discoveredSlug !== user.saleorPageSlug) {
-            await db.update(users).set({ saleorPageSlug: discoveredSlug }).where(eq(users.id, payload.userId));
+        if (linkedSlug && linkedSlug !== user.saleorPageSlug) {
+            await db.update(users).set({ saleorPageSlug: linkedSlug }).where(eq(users.id, payload.userId));
         }
-        return { success: !!discoveredSlug, error: "Insufficient address data" };
+        return { success: !!linkedSlug, error: "Insufficient address data", slug: linkedSlug };
     }
 
     // 4. Geocode
@@ -93,7 +151,7 @@ export const geocodeVendorAddress = task({
         latitude: result.latitude,
         longitude: result.longitude,
         geocodedAt: new Date(),
-        saleorPageSlug: discoveredSlug,
+        saleorPageSlug: linkedSlug,
         street: user.street || address.street,
         city: user.city || address.city,
         postalCode: user.postalCode || address.postalCode,
@@ -108,15 +166,15 @@ export const geocodeVendorAddress = task({
         success: true, 
         latitude: result.latitude, 
         longitude: result.longitude,
-        slug: discoveredSlug
+        slug: linkedSlug
       };
     }
 
     // Update slug even if geocoding fails
-    if (discoveredSlug && discoveredSlug !== user.saleorPageSlug) {
-        await db.update(users).set({ saleorPageSlug: discoveredSlug }).where(eq(users.id, payload.userId));
+    if (linkedSlug && linkedSlug !== user.saleorPageSlug) {
+        await db.update(users).set({ saleorPageSlug: linkedSlug }).where(eq(users.id, payload.userId));
     }
 
-    return { success: !!discoveredSlug, error: "Geocoding failed" };
+    return { success: !!linkedSlug, error: "Geocoding failed", slug: linkedSlug };
   },
 });
