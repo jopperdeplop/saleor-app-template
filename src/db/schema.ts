@@ -12,6 +12,7 @@ export const users = pgTable('users', {
     brandName: text('brand_name'),
     registrationNumber: text('registration_number'),
     saleorPageSlug: text('saleor_page_slug'),
+    payloadBrandPageId: text('payload_brand_page_id'),
     eoriNumber: text('eori_number'),
     phoneNumber: text('phone_number'),
     websiteUrl: text('website_url'),

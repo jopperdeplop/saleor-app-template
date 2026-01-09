@@ -1,0 +1,179 @@
+import { schedules } from "@trigger.dev/sdk";
+import { createHash } from "crypto";
+
+const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
+const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY || '';
+const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || '';
+
+const SUPPORTED_LOCALES = ['nl', 'de', 'fr', 'it', 'es', 'pt', 'fi', 'et', 'lv', 'lt', 'sk', 'sl', 'el', 'hr', 'mt'];
+
+interface BrandPage {
+    id: string;
+    vendorId: string;
+    brandName: string;
+    translationHash?: string;
+    layout?: Array<{
+        blockType: string;
+        tagline?: string;
+        heading?: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        [key: string]: any;
+    }>;
+}
+
+/**
+ * Generate a hash of the English content for change detection
+ */
+function generateContentHash(brandPage: BrandPage): string {
+    const content = JSON.stringify({
+        brandName: brandPage.brandName,
+        layout: brandPage.layout?.map(block => ({
+            blockType: block.blockType,
+            tagline: block.tagline,
+            heading: block.heading,
+        })),
+    });
+    return createHash('md5').update(content).digest('hex');
+}
+
+/**
+ * Translate text using Google AI
+ */
+async function translateText(text: string, targetLocale: string): Promise<string> {
+    if (!GOOGLE_AI_API_KEY) {
+        console.warn('Missing GOOGLE_AI_API_KEY');
+        return text;
+    }
+
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GOOGLE_AI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{
+                            text: `Translate the following text to ${targetLocale}. Only return the translated text, nothing else:\n\n${text}`,
+                        }],
+                    }],
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            console.error('Translation API error:', await response.text());
+            return text;
+        }
+
+        const result = await response.json();
+        return result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || text;
+    } catch (e) {
+        console.error('Translation failed:', e);
+        return text;
+    }
+}
+
+/**
+ * Translate a brand page to a specific locale
+ */
+async function translateBrandPage(brandPage: BrandPage, locale: string): Promise<void> {
+    if (!brandPage.layout) return;
+
+    const translatedLayout = [];
+
+    for (const block of brandPage.layout) {
+        const translatedBlock = { ...block };
+
+        if (block.tagline) {
+            translatedBlock.tagline = await translateText(block.tagline, locale);
+        }
+        if (block.heading) {
+            translatedBlock.heading = await translateText(block.heading, locale);
+        }
+
+        translatedLayout.push(translatedBlock);
+    }
+
+    // Update the brand page with translated content for this locale
+    await fetch(`${PAYLOAD_API_URL}/brand-pages/${brandPage.id}?locale=${locale}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-payload-api-key': PAYLOAD_API_KEY,
+        },
+        body: JSON.stringify({
+            brandName: await translateText(brandPage.brandName, locale),
+            layout: translatedLayout,
+        }),
+    });
+}
+
+/**
+ * Daily scheduled task to translate brand pages.
+ * Only translates pages where the content hash has changed.
+ */
+export const translateBrandPagesTask = schedules.task({
+    id: "translate-brand-pages-daily",
+    cron: "0 0 * * *", // Once per day at midnight UTC
+    run: async () => {
+        console.log('Starting daily brand page translation...');
+
+        // Fetch all brand pages
+        const response = await fetch(`${PAYLOAD_API_URL}/brand-pages?limit=100`, {
+            headers: {
+                'x-payload-api-key': PAYLOAD_API_KEY,
+            },
+        });
+
+        if (!response.ok) {
+            console.error('Failed to fetch brand pages:', await response.text());
+            return { translated: 0, skipped: 0, error: 'Failed to fetch pages' };
+        }
+
+        const { docs: brandPages } = await response.json() as { docs: BrandPage[] };
+        
+        let translated = 0;
+        let skipped = 0;
+
+        for (const brandPage of brandPages) {
+            const currentHash = generateContentHash(brandPage);
+
+            // Skip if content hasn't changed
+            if (brandPage.translationHash === currentHash) {
+                console.log(`Skipping ${brandPage.brandName} - no changes`);
+                skipped++;
+                continue;
+            }
+
+            console.log(`Translating ${brandPage.brandName} to ${SUPPORTED_LOCALES.length} locales...`);
+
+            // Translate to all supported locales
+            for (const locale of SUPPORTED_LOCALES) {
+                try {
+                    await translateBrandPage(brandPage, locale);
+                    console.log(`  Translated to ${locale}`);
+                } catch (e) {
+                    console.error(`  Failed to translate to ${locale}:`, e);
+                }
+            }
+
+            // Update the translation hash
+            await fetch(`${PAYLOAD_API_URL}/brand-pages/${brandPage.id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-payload-api-key': PAYLOAD_API_KEY,
+                },
+                body: JSON.stringify({
+                    translationHash: currentHash,
+                }),
+            });
+
+            translated++;
+        }
+
+        console.log(`Translation complete: ${translated} translated, ${skipped} skipped`);
+        return { translated, skipped };
+    },
+});

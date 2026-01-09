@@ -11,6 +11,61 @@ if (SALEOR_TOKEN && !SALEOR_TOKEN.startsWith('Bearer ')) {
     SALEOR_TOKEN = `Bearer ${SALEOR_TOKEN}`;
 }
 
+const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
+const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY || '';
+
+/**
+ * Creates a brand page in PayloadCMS and returns its ID.
+ */
+async function createPayloadBrandPage(data: {
+    vendorId: number;
+    saleorPageSlug: string;
+    brandName: string;
+}): Promise<string | null> {
+    if (!PAYLOAD_API_URL || !PAYLOAD_API_KEY) {
+        console.warn('Missing PayloadCMS configuration');
+        return null;
+    }
+
+    try {
+        const res = await fetch(`${PAYLOAD_API_URL}/brand-pages`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-payload-api-key': PAYLOAD_API_KEY,
+            },
+            body: JSON.stringify({
+                vendorId: String(data.vendorId),
+                saleorPageSlug: data.saleorPageSlug,
+                brandName: data.brandName,
+                layout: [
+                    {
+                        blockType: 'brand-hero',
+                        tagline: `Welcome to ${data.brandName}`,
+                    },
+                    {
+                        blockType: 'brand-about',
+                        heading: 'About Us',
+                    },
+                ],
+            }),
+        });
+
+        if (!res.ok) {
+            const error = await res.text();
+            console.error('PayloadCMS error:', error);
+            return null;
+        }
+
+        const result = await res.json();
+        console.log(`Created PayloadCMS brand page: ${result.doc?.id}`);
+        return result.doc?.id || null;
+    } catch (e) {
+        console.error('Failed to create PayloadCMS brand page:', e);
+        return null;
+    }
+}
+
 /**
  * Ensures a Brand Page exists in Saleor and returns its slug.
  * If not found, creates a new one.
@@ -103,7 +158,7 @@ async function getOrCreateBrandPageSlug(brandName: string): Promise<string | nul
 
 /**
  * Geocodes a vendor's address and updates their database record with coordinates.
- * Also automates the creation of their Saleor brand page and links the slug.
+ * Also automates the creation of their Saleor brand page, PayloadCMS brand page, and links them.
  */
 export const geocodeVendorAddress = task({
   id: "geocode-vendor-address",
@@ -120,13 +175,23 @@ export const geocodeVendorAddress = task({
         return { success: false, error: "User not found" };
     }
 
-    // 2. Ensure Brand Page exists and get its slug
+    // 2. Ensure Saleor Brand Page exists and get its slug
     let linkedSlug = user.saleorPageSlug;
     if (!linkedSlug) {
         linkedSlug = await getOrCreateBrandPageSlug(user.brandName || user.brand);
     }
 
-    // 3. Prepare address for geocoding
+    // 3. Ensure PayloadCMS Brand Page exists
+    let payloadBrandPageId = user.payloadBrandPageId;
+    if (!payloadBrandPageId && linkedSlug) {
+        payloadBrandPageId = await createPayloadBrandPage({
+            vendorId: user.id,
+            saleorPageSlug: linkedSlug,
+            brandName: user.brandName || user.brand,
+        });
+    }
+
+    // 4. Prepare address for geocoding
     const address = {
       street: user.street || "",
       city: user.city || "",
@@ -135,23 +200,27 @@ export const geocodeVendorAddress = task({
     };
 
     if (!address.city || !address.country) {
-        // Update slug even if geocoding can't proceed
-        if (linkedSlug && linkedSlug !== user.saleorPageSlug) {
-            await db.update(users).set({ saleorPageSlug: linkedSlug }).where(eq(users.id, payload.userId));
+        // Update slugs even if geocoding can't proceed
+        if (linkedSlug !== user.saleorPageSlug || payloadBrandPageId !== user.payloadBrandPageId) {
+            await db.update(users).set({ 
+                saleorPageSlug: linkedSlug,
+                payloadBrandPageId: payloadBrandPageId,
+            }).where(eq(users.id, payload.userId));
         }
-        return { success: !!linkedSlug, error: "Insufficient address data", slug: linkedSlug };
+        return { success: !!linkedSlug, error: "Insufficient address data", slug: linkedSlug, payloadBrandPageId };
     }
 
-    // 4. Geocode
+    // 5. Geocode
     const result = await geocodeAddress(address);
 
     if (result) {
-      // 5. Update coordinates and slug in DB
+      // 6. Update coordinates and slugs in DB
       const updatePayload = {
         latitude: result.latitude,
         longitude: result.longitude,
         geocodedAt: new Date(),
         saleorPageSlug: linkedSlug,
+        payloadBrandPageId: payloadBrandPageId,
         street: user.street || address.street,
         city: user.city || address.city,
         postalCode: user.postalCode || address.postalCode,
@@ -166,15 +235,19 @@ export const geocodeVendorAddress = task({
         success: true, 
         latitude: result.latitude, 
         longitude: result.longitude,
-        slug: linkedSlug
+        slug: linkedSlug,
+        payloadBrandPageId
       };
     }
 
-    // Update slug even if geocoding fails
-    if (linkedSlug && linkedSlug !== user.saleorPageSlug) {
-        await db.update(users).set({ saleorPageSlug: linkedSlug }).where(eq(users.id, payload.userId));
+    // Update slugs even if geocoding fails
+    if (linkedSlug !== user.saleorPageSlug || payloadBrandPageId !== user.payloadBrandPageId) {
+        await db.update(users).set({ 
+            saleorPageSlug: linkedSlug,
+            payloadBrandPageId: payloadBrandPageId,
+        }).where(eq(users.id, payload.userId));
     }
 
-    return { success: !!linkedSlug, error: "Geocoding failed", slug: linkedSlug };
+    return { success: !!linkedSlug, error: "Geocoding failed", slug: linkedSlug, payloadBrandPageId };
   },
 });
