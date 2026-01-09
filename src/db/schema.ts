@@ -22,7 +22,6 @@ export const users = pgTable('users', {
     latitude: doublePrecision('latitude'),
     longitude: doublePrecision('longitude'),
     geocodedAt: timestamp('geocoded_at'),
-    warehouseAddress: jsonb('warehouse_address'), // { street, city, zip, country }
     shippingCountries: jsonb('shipping_countries').default([]), // Array of country codes e.g. ['NL', 'BE', 'DE']
     twoFactorSecret: text('two_factor_secret'),
     twoFactorEnabled: boolean('two_factor_enabled').default(false).notNull(),
@@ -53,8 +52,6 @@ export const vendorApplications = pgTable('vendor_applications', {
     city: text('city'),
     postalCode: text('postal_code'),
     countryCode: text('country_code'),
-    country: text('country'), // KEEP FOR MIGRATION
-    warehouseAddress: jsonb('warehouse_address'), // KEEP FOR MIGRATION
     status: text('status').default('pending').notNull(), // 'pending', 'approved', 'rejected'
     createdAt: timestamp('created_at').defaultNow(),
     processedAt: timestamp('processed_at'),

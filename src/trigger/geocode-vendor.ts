@@ -70,10 +70,10 @@ export const geocodeVendorAddress = task({
 
     // 3. Prepare address for geocoding
     const address = {
-      street: user.street || (user.warehouseAddress as any)?.street || "",
-      city: user.city || (user.warehouseAddress as any)?.city || "",
-      postalCode: user.postalCode || (user.warehouseAddress as any)?.zip || "",
-      country: user.countryCode || (user.warehouseAddress as any)?.country || "",
+      street: user.street || "",
+      city: user.city || "",
+      postalCode: user.postalCode || "",
+      country: user.countryCode || "",
     };
 
     if (!address.city || !address.country) {
