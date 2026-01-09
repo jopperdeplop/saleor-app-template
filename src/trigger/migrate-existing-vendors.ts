@@ -20,7 +20,7 @@ async function createPayloadBrandPage(data: {
     }
 
     try {
-        const res = await fetch(`${PAYLOAD_API_URL}/brand-page`, {
+        const res = await fetch(`${PAYLOAD_API_URL}/brand-pages`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
