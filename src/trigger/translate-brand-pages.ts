@@ -96,7 +96,7 @@ async function translateBrandPage(brandPage: BrandPage, locale: string): Promise
     }
 
     // Update the brand page with translated content for this locale
-    await fetch(`${PAYLOAD_API_URL}/brand-pages/${brandPage.id}?locale=${locale}`, {
+    await fetch(`${PAYLOAD_API_URL}/brand-page/${brandPage.id}?locale=${locale}`, {
         method: 'PATCH',
         headers: {
             'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ export const translateBrandPagesTask = schedules.task({
         console.log('Starting daily brand page translation...');
 
         // Fetch all brand pages
-        const response = await fetch(`${PAYLOAD_API_URL}/brand-pages?limit=100`, {
+        const response = await fetch(`${PAYLOAD_API_URL}/brand-page?limit=100`, {
             headers: {
                 'x-payload-api-key': PAYLOAD_API_KEY,
             },
@@ -159,7 +159,7 @@ export const translateBrandPagesTask = schedules.task({
             }
 
             // Update the translation hash
-            await fetch(`${PAYLOAD_API_URL}/brand-pages/${brandPage.id}`, {
+            await fetch(`${PAYLOAD_API_URL}/brand-page/${brandPage.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
