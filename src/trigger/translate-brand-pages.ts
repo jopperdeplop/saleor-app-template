@@ -111,7 +111,7 @@ async function translateBrandPage(brandPage: BrandPage, locale: string): Promise
 
     // Update the brand page with translated content for this locale
     const url = `${getPayloadUrl(`brand-page/${brandPage.id}`)}?locale=${locale}`;
-    await fetch(url, {
+    const res = await fetch(url, {
         method: 'PATCH',
         headers: {
             'Content-Type': 'application/json',
@@ -122,6 +122,12 @@ async function translateBrandPage(brandPage: BrandPage, locale: string): Promise
             layout: translatedLayout,
         }),
     });
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Failed to save ${locale} translation for ${brandPage.brandName}:`, errorText);
+        throw new Error(`PATCH failed for locale ${locale}: ${res.status}`);
+    }
 }
 
 /**
@@ -155,8 +161,8 @@ export const translateBrandPagesTask = schedules.task({
         for (const brandPage of brandPages) {
             const currentHash = generateContentHash(brandPage);
 
-            // Skip if content hasn't changed
-            if (brandPage.translationHash === currentHash) {
+            // Skip if content hasn't changed AND hash exists (new pages with no hash should be translated)
+            if (brandPage.translationHash && brandPage.translationHash === currentHash) {
                 console.log(`Skipping ${brandPage.brandName} - no changes`);
                 skipped++;
                 continue;
