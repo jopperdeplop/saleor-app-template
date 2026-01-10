@@ -94,7 +94,9 @@ async function translateBrandPage(brandPage: BrandPage, locale: string): Promise
     const translatedLayout = [];
 
     for (const block of brandPage.layout) {
-        const translatedBlock = { ...block };
+        // Remove id to avoid uniqueness constraint errors when saving locale versions
+        const { id: _blockId, ...blockWithoutId } = block;
+        const translatedBlock = { ...blockWithoutId };
 
         if (block.tagline) {
             translatedBlock.tagline = await translateText(block.tagline, locale);
