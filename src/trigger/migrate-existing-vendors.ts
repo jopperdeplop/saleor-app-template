@@ -3,8 +3,16 @@ import { db } from "../db";
 import { users } from "../db/schema";
 import { and, isNotNull, isNull, eq } from "drizzle-orm";
 
-const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
+const PAYLOAD_API_BASE = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
 const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY || '';
+
+// Clean up standard URL to ensure it has /api
+const getPayloadUrl = (endpoint: string) => {
+    const base = PAYLOAD_API_BASE.endsWith('/') ? PAYLOAD_API_BASE.slice(0, -1) : PAYLOAD_API_BASE;
+    // If base doesn't end with /api, add it
+    const normalizedBase = base.toLowerCase().endsWith('/api') ? base : `${base}/api`;
+    return `${normalizedBase}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+};
 
 if (PAYLOAD_API_KEY) {
     console.log(`PAYLOAD_API_KEY detected: ${PAYLOAD_API_KEY.substring(0, 4)}...${PAYLOAD_API_KEY.substring(PAYLOAD_API_KEY.length - 4)}`);
@@ -20,7 +28,7 @@ async function createPayloadBrandPage(data: {
     saleorPageSlug: string;
     brandName: string;
 }): Promise<string | null> {
-    if (!PAYLOAD_API_URL || !PAYLOAD_API_KEY) {
+    if (!PAYLOAD_API_BASE || !PAYLOAD_API_KEY) {
         console.warn('Missing PayloadCMS configuration');
         return null;
     }
@@ -43,10 +51,15 @@ async function createPayloadBrandPage(data: {
             ],
         };
 
-        console.log(`Sending request to PayloadCMS: ${PAYLOAD_API_URL}/brand-page?locale=en`);
+        const url = `${getPayloadUrl('brand-page')}?locale=en`;
+        console.log(`Sending request to PayloadCMS: ${url}`);
         console.log('Payload Body:', JSON.stringify(payloadBody, null, 2));
+        console.log('Using Headers:', {
+            'Content-Type': 'application/json',
+            'x-payload-api-key': PAYLOAD_API_KEY ? `${PAYLOAD_API_KEY.substring(0, 4)}...` : 'MISSING'
+        });
 
-        const res = await fetch(`${PAYLOAD_API_URL}/brand-page?locale=en`, {
+        const res = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

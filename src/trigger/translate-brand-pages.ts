@@ -1,9 +1,16 @@
 import { schedules } from "@trigger.dev/sdk";
 import { createHash } from "crypto";
 
-const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
+const PAYLOAD_API_BASE = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
 const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY || '';
 const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || '';
+
+// Clean up standard URL to ensure it has /api
+const getPayloadUrl = (endpoint: string) => {
+    const base = PAYLOAD_API_BASE.endsWith('/') ? PAYLOAD_API_BASE.slice(0, -1) : PAYLOAD_API_BASE;
+    const normalizedBase = base.toLowerCase().endsWith('/api') ? base : `${base}/api`;
+    return `${normalizedBase}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+};
 
 const SUPPORTED_LOCALES = ['nl', 'de', 'fr', 'it', 'es', 'pt', 'fi', 'et', 'lv', 'lt', 'sk', 'sl', 'el', 'hr', 'mt'];
 
@@ -96,7 +103,8 @@ async function translateBrandPage(brandPage: BrandPage, locale: string): Promise
     }
 
     // Update the brand page with translated content for this locale
-    await fetch(`${PAYLOAD_API_URL}/brand-page/${brandPage.id}?locale=${locale}`, {
+    const url = `${getPayloadUrl(`brand-page/${brandPage.id}`)}?locale=${locale}`;
+    await fetch(url, {
         method: 'PATCH',
         headers: {
             'Content-Type': 'application/json',
@@ -119,8 +127,9 @@ export const translateBrandPagesTask = schedules.task({
     run: async () => {
         console.log('Starting daily brand page translation...');
 
-        // Fetch all brand pages
-        const response = await fetch(`${PAYLOAD_API_URL}/brand-page?limit=100`, {
+        // Fetch all brand pages (explicitly fetch English source at depth 0 for stable hashing)
+        const url = `${getPayloadUrl('brand-page')}?locale=en&depth=0&limit=100`;
+        const response = await fetch(url, {
             headers: {
                 'x-payload-api-key': PAYLOAD_API_KEY,
             },
@@ -158,8 +167,8 @@ export const translateBrandPagesTask = schedules.task({
                 }
             }
 
-            // Update the translation hash
-            await fetch(`${PAYLOAD_API_URL}/brand-page/${brandPage.id}`, {
+            // Update the translation hash on the main document
+            await fetch(getPayloadUrl(`brand-page/${brandPage.id}`), {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
