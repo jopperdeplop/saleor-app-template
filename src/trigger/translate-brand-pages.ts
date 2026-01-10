@@ -38,6 +38,10 @@ function generateContentHash(brandPage: BrandPage): string {
             blockType: block.blockType,
             tagline: block.tagline,
             heading: block.heading,
+            story: block.story,
+            foundingYear: block.foundingYear,
+            logo: typeof block.logo === 'object' ? block.logo?.id : block.logo,
+            coverImage: typeof block.coverImage === 'object' ? block.coverImage?.id : block.coverImage,
         })),
     });
     return createHash('md5').update(content).digest('hex');
@@ -97,6 +101,9 @@ async function translateBrandPage(brandPage: BrandPage, locale: string): Promise
         }
         if (block.heading) {
             translatedBlock.heading = await translateText(block.heading, locale);
+        }
+        if (block.story) {
+            translatedBlock.story = await translateText(block.story, locale);
         }
 
         translatedLayout.push(translatedBlock);
