@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 
 const PAYLOAD_API_BASE = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
 const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY || '';
-const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || '';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 
 // Clean up standard URL to ensure it has /api
 const getPayloadUrl = (endpoint: string) => {
@@ -51,14 +51,14 @@ function generateContentHash(brandPage: BrandPage): string {
  * Translate text using Google AI
  */
 async function translateText(text: string, targetLocale: string): Promise<string> {
-    if (!GOOGLE_AI_API_KEY) {
-        console.warn('Missing GOOGLE_AI_API_KEY');
+    if (!GOOGLE_API_KEY) {
+        console.warn('Missing GOOGLE_API_KEY');
         return text;
     }
 
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GOOGLE_AI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GOOGLE_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
