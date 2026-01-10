@@ -5,7 +5,7 @@ import { geocodeAddress } from "../lib/geocoding";
 import { eq } from "drizzle-orm";
 
 const SALEOR_API_URL = process.env.SALEOR_API_URL || process.env.NEXT_PUBLIC_SALEOR_API_URL || 'https://api.salp.shop/graphql/';
-const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID;
+const BRAND_MODEL_TYPE_ID = process.env.SALEOR_BRAND_MODEL_TYPE_ID || 'UGFnZVR5cGU6NQ==';
 let SALEOR_TOKEN = (process.env.SALEOR_APP_TOKEN || process.env.SALEOR_TOKEN || "").trim();
 if (SALEOR_TOKEN && !SALEOR_TOKEN.startsWith('Bearer ')) {
     SALEOR_TOKEN = `Bearer ${SALEOR_TOKEN}`;
