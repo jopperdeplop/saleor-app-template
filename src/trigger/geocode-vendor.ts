@@ -14,6 +14,12 @@ if (SALEOR_TOKEN && !SALEOR_TOKEN.startsWith('Bearer ')) {
 const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL || 'https://payload-saleor-payload.vercel.app/api';
 const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY || '';
 
+if (PAYLOAD_API_KEY) {
+    console.log(`PAYLOAD_API_KEY detected: ${PAYLOAD_API_KEY.substring(0, 4)}...${PAYLOAD_API_KEY.substring(PAYLOAD_API_KEY.length - 4)}`);
+} else {
+    console.warn('PAYLOAD_API_KEY is MISSING in environment variables');
+}
+
 /**
  * Creates a brand page in PayloadCMS and returns its ID.
  */
@@ -26,34 +32,41 @@ async function createPayloadBrandPage(data: {
         console.warn('Missing PayloadCMS configuration');
         return null;
     }
-
+    
     try {
-        const res = await fetch(`${PAYLOAD_API_URL}/brand-page`, {
+        const payloadBody = {
+            vendorId: String(data.vendorId),
+            saleorPageSlug: data.saleorPageSlug,
+            brandName: data.brandName,
+            layout: [
+                {
+                    blockType: 'brand-hero',
+                    tagline: `Welcome to ${data.brandName}`,
+                },
+                {
+                    blockType: 'brand-about',
+                    heading: 'About Us',
+                    story: 'Welcome to our brand page. We are excited to share our story with you.',
+                },
+            ],
+        };
+
+        console.log(`Sending request to PayloadCMS: ${PAYLOAD_API_URL}/brand-page?locale=en`);
+        console.log('Payload Body:', JSON.stringify(payloadBody, null, 2));
+
+        const res = await fetch(`${PAYLOAD_API_URL}/brand-page?locale=en`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'x-payload-api-key': PAYLOAD_API_KEY,
             },
-            body: JSON.stringify({
-                vendorId: String(data.vendorId),
-                saleorPageSlug: data.saleorPageSlug,
-                brandName: data.brandName,
-                layout: [
-                    {
-                        blockType: 'brand-hero',
-                        tagline: `Welcome to ${data.brandName}`,
-                    },
-                    {
-                        blockType: 'brand-about',
-                        heading: 'About Us',
-                    },
-                ],
-            }),
+            body: JSON.stringify(payloadBody),
         });
 
         if (!res.ok) {
-            const error = await res.text();
-            console.error('PayloadCMS error:', error);
+            const errorText = await res.text();
+            console.error(`PayloadCMS Error Status: ${res.status} ${res.statusText}`);
+            console.error('PayloadCMS Error Body:', errorText);
             return null;
         }
 
